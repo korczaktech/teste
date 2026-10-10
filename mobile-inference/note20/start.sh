@@ -23,6 +23,7 @@ mkdir -p "$ROOT/logs"
 echo "Iniciando o Zeus Note20 apenas em localhost (não exposto à rede)..."
 nohup "$SERVER" \
   --model "$MODEL" \
+  --alias zeus-note20 \
   --host 127.0.0.1 \
   --port 8080 \
   --ctx-size 2048 \
