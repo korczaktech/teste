@@ -812,7 +812,7 @@ function buildConfirmedAction(message) {
     const content = memory[1].trim().slice(0, 1500);
     return { toolId: "memory.save", input: { content }, summary: "Salvar esta informação na memória do Morok: “" + content.slice(0, 180) + (content.length > 180 ? "…" : "") + "”." };
   }
-  const reminder = message.match(/\b(?:me lembre|lembre-me|crie um lembrete)\s+(?:de\s+|para\s+)?(.+)/i);
+  const reminder = message.match(/\b(?:crie|criar)\s+(?:uma\s+)?notifica[cç][aã]o\s*(?:com|:)?\s*(.+)/i);
   if (reminder?.[1]?.trim()) {
     const content = reminder[1].trim().slice(0, 1000);
     return { toolId: "notification.create", input: { content }, summary: "Criar uma notificação no Morok: “" + content.slice(0, 180) + (content.length > 180 ? "…" : "") + "”." };
