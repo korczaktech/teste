@@ -50,8 +50,11 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `POST /api/auth/register` / `POST /api/auth/login` — criar conta e iniciar sessão.
 - `GET /api/auth/me` / `POST /api/auth/logout` — validar e encerrar a sessão.
 - `GET /api/me/tasks`, `POST /api/me/tasks`, `PATCH /api/me/tasks/:id`, `DELETE /api/me/tasks/:id` — tarefas isoladas por conta.
+- `GET /api/me/preferences`, `PATCH /api/me/preferences` — preferências de voz e segurança persistidas.
+- `GET /api/me/connectors` — catálogo e estado de configuração dos conectores.
+- `GET /api/me/messages?conversationId=...` — histórico de conversa por conta.
 - `GET /api/me/activity` — consultar a auditoria autenticada.
-- `POST /api/ai/chat` — conversa com o modelo Ollama; exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
+- `POST /api/ai/chat` — conversa com o modelo Ollama; mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
 - `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
 
 Exemplo de mensagem para o assistente:
