@@ -3,6 +3,8 @@ on:
   push:
     branches: [main]
     paths:
+      - "index.html"
+      - "CNAME"
       - "frontend/**"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
