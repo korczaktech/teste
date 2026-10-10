@@ -157,6 +157,7 @@ async function requireAuth(req, res, next) {
     return res.status(503).json({ error: "Não foi possível validar a sessão neste momento." });
   }
 }
+function asyncRoute(handler) { return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next); }
 function requireAuthWhenConfigured(req, res, next) {
   if (!authSecret()) return next(); // Demonstration mode until the owner configures authentication.
   return requireAuth(req, res, next);
@@ -309,16 +310,16 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/auth/me", requireAuth, (req, res) => res.json({
   user: { id: String(req.zeusUser._id), email: req.zeusUser.email, displayName: req.zeusUser.displayName }
 }));
-app.post("/api/auth/logout", requireAuth, async (req, res) => {
+app.post("/api/auth/logout", requireAuth, asyncRoute(async (req, res) => {
   await req.zeusDb.collection("zeus_sessions").deleteOne({ _id: req.zeusSessionId });
   await audit(req.zeusDb, req.zeusUser._id, "account.logout");
-  return res.json({ ok: true });
+  return res.json({ ok: true }}));
 });
-app.get("/api/me/tasks", requireAuth, async (req, res) => {
+app.get("/api/me/tasks", requireAuth, asyncRoute(async (req, res) => {
   const tasks = await req.zeusDb.collection("zeus_tasks").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(200).toArray();
-  return res.json({ tasks: tasks.map((task) => ({ id: String(task._id), title: task.title, category: task.category, details: task.details, done: task.done, createdAt: task.createdAt })) });
+  return res.json({ tasks: tasks.map((task) => ({ id: String(task._id), title: task.title, category: task.category, details: task.details, done: task.done, createdAt: task.createdAt })) }}));
 });
-app.post("/api/me/tasks", requireAuth, async (req, res) => {
+app.post("/api/me/tasks", requireAuth, asyncRoute(async (req, res) => {
   const title = typeof req.body?.title === "string" ? req.body.title.trim() : "";
   const category = typeof req.body?.category === "string" ? req.body.category.trim().slice(0, 40) : "Geral";
   const details = typeof req.body?.details === "string" ? req.body.details.trim().slice(0, 1000) : "";
@@ -326,9 +327,9 @@ app.post("/api/me/tasks", requireAuth, async (req, res) => {
   const task = { userId: req.zeusUser._id, title, category, details, done: false, createdAt: new Date(), updatedAt: new Date() };
   const result = await req.zeusDb.collection("zeus_tasks").insertOne(task);
   await audit(req.zeusDb, req.zeusUser._id, "task.created", { taskId: String(result.insertedId), title });
-  return res.status(201).json({ task: { id: String(result.insertedId), title, category, details, done: false, createdAt: task.createdAt } });
+  return res.status(201).json({ task: { id: String(result.insertedId), title, category, details, done: false, createdAt: task.createdAt } }}));
 });
-app.patch("/api/me/tasks/:id", requireAuth, async (req, res) => {
+app.patch("/api/me/tasks/:id", requireAuth, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "Identificador de tarefa inválido." });
   const update = {};
   if (typeof req.body?.done === "boolean") update.done = req.body.done;
@@ -342,24 +343,24 @@ app.patch("/api/me/tasks/:id", requireAuth, async (req, res) => {
   const result = await req.zeusDb.collection("zeus_tasks").updateOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id }, { $set: update });
   if (!result.matchedCount) return res.status(404).json({ error: "Tarefa não encontrada." });
   await audit(req.zeusDb, req.zeusUser._id, "task.updated", { taskId: req.params.id, changes: Object.keys(update) });
-  return res.json({ ok: true });
+  return res.json({ ok: true }}));
 });
-app.delete("/api/me/tasks/:id", requireAuth, async (req, res) => {
+app.delete("/api/me/tasks/:id", requireAuth, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "Identificador de tarefa inválido." });
   const result = await req.zeusDb.collection("zeus_tasks").deleteOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id });
   if (!result.deletedCount) return res.status(404).json({ error: "Tarefa não encontrada." });
   await audit(req.zeusDb, req.zeusUser._id, "task.deleted", { taskId: req.params.id });
-  return res.json({ ok: true });
+  return res.json({ ok: true }}));
 });
-app.get("/api/me/messages", requireAuth, async (req, res) => {
+app.get("/api/me/messages", requireAuth, asyncRoute(async (req, res) => {
   const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : "";
   if (!/^[a-z0-9-]{16,64}$/i.test(conversationId)) return res.status(400).json({ error: "Identificador de conversa inválido." });
   const entries = await req.zeusDb.collection("zeus_messages").find({ userId: req.zeusUser._id, conversationId }).sort({ createdAt: 1 }).limit(100).toArray();
-  return res.json({ conversationId, messages: entries.map((entry) => ({ role: entry.role, content: entry.content, createdAt: entry.createdAt })) });
+  return res.json({ conversationId, messages: entries.map((entry) => ({ role: entry.role, content: entry.content, createdAt: entry.createdAt })) }}));
 });
-app.get("/api/me/activity", requireAuth, async (req, res) => {
+app.get("/api/me/activity", requireAuth, asyncRoute(async (req, res) => {
   const entries = await req.zeusDb.collection("zeus_audit").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
-  return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) });
+  return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) }}));
 });
 
 app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
@@ -411,6 +412,12 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
     console.error("Zeus AI request failed:", error.message);
     return res.status(502).json({ error: "Não foi possível acessar Ollama ou salvar a conversa. Verifique os serviços e tente novamente." });
   }
+});
+
+app.use((error, _req, res, next) => {
+  console.error("Zeus API request failed:", error.message);
+  if (res.headersSent) return next(error);
+  return res.status(500).json({ error: "Ocorreu um erro interno. Tente novamente." });
 });
 
 const port = Number(process.env.PORT || 10000);
