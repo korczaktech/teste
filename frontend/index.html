@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b14">
+  <meta name="description" content="Zeus — central inteligente para redes sociais.">
+  <title>Zeus — Social Intelligence</title>
+  <style>
+    :root{color-scheme:dark;--bg:#080b14;--panel:#101625;--panel2:#141d2f;--line:#25334b;--text:#eef4ff;--muted:#94a5bf;--blue:#6b9cff;--cyan:#58e1e6;--good:#5de0ae;--warn:#ffc66d}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 75% -10%,#1b3155 0,transparent 40%),var(--bg);color:var(--text);font:15px/1.5 Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}
+    button,input,textarea{font:inherit}button{cursor:pointer}a{color:inherit;text-decoration:none}.app{display:grid;grid-template-columns:245px 1fr;min-height:100vh}
+    aside{border-right:1px solid var(--line);padding:26px 17px;background:#0a0e18cc;display:flex;flex-direction:column;gap:28px}.brand{display:flex;align-items:center;gap:12px;padding:0 9px}.logo{width:42px;height:42px;border-radius:15px;background:linear-gradient(135deg,#6b9cff,#58e1e6);display:grid;place-items:center;color:#07101c;font-weight:900;font-size:22px;box-shadow:0 0 30px #4d8dff35}.brand b{display:block;font-size:18px;letter-spacing:.13em}.brand small{color:var(--muted);font-size:11px;letter-spacing:.16em}.navlabel{color:#667895;font-size:10px;font-weight:800;letter-spacing:.16em;padding:0 12px;margin-bottom:7px}.nav{display:grid;gap:5px}.nav button{border:1px solid transparent;background:transparent;color:#9eafc9;padding:11px 12px;border-radius:12px;text-align:left;display:flex;gap:12px;align-items:center}.nav button.active,.nav button:hover{background:#17243a;color:#fff;border-color:#2a3c59}.nav .ico{width:20px;text-align:center;color:var(--cyan)}.sidebottom{margin-top:auto;border:1px solid var(--line);border-radius:15px;padding:14px;color:var(--muted);font-size:12px}.sidebottom strong{display:block;color:var(--text);margin-bottom:5px}
+    main{padding:30px clamp(18px,4vw,52px);max-width:1600px;width:100%;margin:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:30px}.eyebrow{font-size:11px;letter-spacing:.17em;text-transform:uppercase;color:var(--cyan);font-weight:800}.top h1{font-size:clamp(27px,3vw,38px);letter-spacing:-.04em;margin:5px 0 0}.statuspill{display:flex;gap:9px;align-items:center;border:1px solid var(--line);background:#111a29;padding:9px 13px;border-radius:999px;color:var(--muted);font-size:12px;white-space:nowrap}.dot{width:8px;height:8px;background:var(--warn);border-radius:50%;box-shadow:0 0 12px currentColor}.hero{padding:clamp(23px,4vw,38px);border:1px solid #2b4567;border-radius:23px;background:linear-gradient(115deg,#14243c,#111827 65%,#122e3a);position:relative;overflow:hidden;margin-bottom:22px}.hero:after{content:"";position:absolute;width:250px;height:250px;border:1px solid #4b8aff35;border-radius:50%;right:-60px;top:-90px;box-shadow:0 0 0 35px #4b8aff08,0 0 0 70px #4b8aff06}.hero h2{font-size:clamp(22px,3vw,31px);margin:8px 0;letter-spacing:-.035em;max-width:650px}.hero p{color:#a8bad5;max-width:650px;margin:0 0 20px}.actions{display:flex;gap:10px;flex-wrap:wrap;position:relative;z-index:1}.btn{border:1px solid #344765;background:#18253a;color:var(--text);padding:10px 15px;border-radius:11px;font-weight:650}.btn.primary{background:linear-gradient(120deg,#6b9cff,#58e1e6);color:#06101c;border:0}.btn:disabled{opacity:.5;cursor:wait}
+    .grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px;margin:18px 0}.card{background:linear-gradient(145deg,#111827,#0e1421);border:1px solid var(--line);border-radius:17px;padding:19px;min-width:0}.cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.card h3{font-size:14px;margin:0}.chip{font-size:10px;color:var(--muted);border:1px solid #2a3850;border-radius:999px;padding:4px 8px}.metric{font-size:28px;font-weight:750;letter-spacing:-.04em}.muted{color:var(--muted);font-size:12px}.metriclabel{color:var(--muted);font-size:12px;margin-top:4px}.wide{grid-column:span 2}.list{display:grid;gap:12px}.listrow{display:flex;justify-content:space-between;gap:15px;padding:10px 0;border-bottom:1px solid #202b3d}.listrow:last-child{border:0}.state{color:var(--warn);font-size:11px}.sectiontitle{font-size:18px;margin:25px 0 12px;letter-spacing:-.02em}.empty{border:1px dashed #34445d;border-radius:13px;padding:22px;color:var(--muted);text-align:center;font-size:13px}.chatbox{display:grid;gap:12px}.chatbox textarea{resize:vertical;min-height:90px;width:100%;background:#0b111d;border:1px solid #2a3850;color:var(--text);border-radius:12px;padding:13px;outline:none}.chatbox textarea:focus{border-color:var(--blue)}.answer{white-space:pre-wrap;color:#d6e2f5;font-size:13px;min-height:20px}.footer{color:#60718d;font-size:11px;margin-top:28px;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    @media(max-width:950px){.app{grid-template-columns:1fr}aside{padding:14px 16px;border-right:0;border-bottom:1px solid var(--line);gap:13px}.brand{padding:0 3px}.navlabel,.sidebottom{display:none}.nav{display:flex;overflow:auto}.nav button{white-space:nowrap;padding:9px 11px}.nav .ico{display:none}main{padding-top:23px}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:600px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.top{align-items:flex-start;flex-direction:column}.statuspill{white-space:normal}.hero:after{opacity:.4}}
+  </style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <a class="brand" href="#" aria-label="Zeus início"><span class="logo">Z</span><span><b>ZEUS</b><small>SOCIAL INTELLIGENCE</small></span></a>
+    <div><div class="navlabel">CENTRAL DE COMANDO</div><nav class="nav" aria-label="Navegação">
+      <button class="active" data-view="overview"><span class="ico">◈</span>Visão geral</button>
+      <button data-view="accounts"><span class="ico">◎</span>Contas sociais</button>
+      <button data-view="content"><span class="ico">▤</span>Conteúdo</button>
+      <button data-view="analytics"><span class="ico">⌁</span>Análises</button>
+      <button data-view="assistant"><span class="ico">✳</span>Assistente IA</button>
+      <button data-view="settings"><span class="ico">⚙</span>Configurações</button>
+    </nav></div>
+    <div class="sidebottom"><strong>Ambiente de desenvolvimento</strong>Integrações reais serão ativadas somente após configurar credenciais e permissões oficiais.</div>
+  </aside>
+  <main>
+    <header class="top"><div><div class="eyebrow">KORCZAK TECHNOLOGIES / MOROK</div><h1 id="pageTitle">Visão geral</h1></div><div class="statuspill"><span class="dot" id="healthDot"></span><span id="healthText">Conectando aos serviços…</span></div></header>
+    <section class="hero"><div class="eyebrow">SEU CENTRO DE OPERAÇÕES</div><h2>Entenda suas redes. Planeje melhor. Decida com clareza.</h2><p>Uma central para organizar contas, planejar publicações e transformar dados autorizados em decisões — com você no controle.</p><div class="actions"><button class="btn primary" id="openAssistant">✳ Conversar com Zeus</button><button class="btn" id="refresh">↻ Verificar serviços</button></div></section>
+    <section class="grid" aria-label="Estado do sistema">
+      <article class="card"><div class="cardhead"><h3>Contas conectadas</h3><span class="chip">FASE 1</span></div><div class="metric" id="accountsMetric">0</div><div class="metriclabel">Nenhuma conta social autorizada</div></article>
+      <article class="card"><div class="cardhead"><h3>Publicações planejadas</h3><span class="chip">CONTEÚDO</span></div><div class="metric" id="postsMetric">0</div><div class="metriclabel">Rascunhos e agenda editorial</div></article>
+      <article class="card"><div class="cardhead"><h3>Serviços</h3><span class="chip">STATUS</span></div><div class="metric" id="servicesMetric">—</div><div class="metriclabel" id="servicesLabel">Aguardando diagnóstico da API</div></article>
+      <article class="card wide"><div class="cardhead"><h3>Atividade recente</h3><span class="chip">AUDITORIA</span></div><div class="list" id="activity"><div class="listrow"><span>Painel Zeus inicializado</span><span class="muted">Agora</span></div><div class="listrow"><span>Modo seguro de demonstração</span><span class="muted">Ativo</span></div></div></article>
+      <article class="card"><div class="cardhead"><h3>Conexões</h3><span class="chip">INTEGRAÇÕES</span></div><div class="list"><div class="listrow"><span>API Zeus</span><span class="state" id="apiState">Verificando</span></div><div class="listrow"><span>MongoDB Atlas</span><span class="state" id="dbState">Verificando</span></div><div class="listrow"><span>Ollama / Morok</span><span class="state" id="aiState">Verificando</span></div></div></article>
+    </section>
+    <section id="assistantSection" class="card"><div class="cardhead"><h3>Assistente Zeus</h3><span class="chip">IA · SOB DEMANDA</span></div><p class="muted">Peça ideias de conteúdo, calendários ou análises. Não envie senhas, tokens ou informações confidenciais.</p><div class="chatbox"><textarea id="prompt" placeholder="Ex.: sugira um calendário editorial de 7 dias para uma marca de tecnologia…" aria-label="Mensagem para Zeus"></textarea><div class="actions"><button class="btn primary" id="send">Enviar para o assistente</button><span class="muted" id="chatStatus" aria-live="polite"></span></div><div class="answer" id="answer" aria-live="polite"></div></div></section>
+    <footer class="footer"><span>Zeus · Planejamento e operação supervisionada</span><span>Versão 0.1.0 · Plano de infraestrutura gratuita</span></footer>
+  </main>
+</div>
+<script>
+  const API_BASE = (window.ZEUS_API_URL || "https://zeus-api.onrender.com").replace(/\/$/,"");
+  const $ = (id) => document.getElementById(id);
+  const titles = {overview:"Visão geral",accounts:"Contas sociais",content:"Conteúdo",analytics:"Análises",assistant:"Assistente IA",settings:"Configurações"};
+  document.querySelectorAll("[data-view]").forEach(btn => btn.addEventListener("click", () => {
+    document.querySelectorAll("[data-view]").forEach(b=>b.classList.toggle("active",b===btn));
+    $("pageTitle").textContent=titles[btn.dataset.view] || "Zeus";
+    if(btn.dataset.view==="assistant") $("assistantSection").scrollIntoView({behavior:"smooth",block:"start"});
+    else if(btn.dataset.view!=="overview") alert("Esta área faz parte da implementação progressiva da Fase 1. Nenhuma conta real foi conectada ainda.");
+    else window.scrollTo({top:0,behavior:"smooth"});
+  }));
+  $("openAssistant").addEventListener("click",()=>{$("assistantSection").scrollIntoView({behavior:"smooth"});$("prompt").focus()});
+  async function checkServices(){
+    $("healthText").textContent="Verificando serviços…";$("healthDot").style.background="var(--warn)";
+    try{
+      const r=await fetch(API_BASE+"/api/status",{headers:{Accept:"application/json"}});
+      if(!r.ok)throw new Error("API respondeu HTTP "+r.status);
+      const d=await r.json();
+      $("healthText").textContent=d.api==="ok"?"API Zeus online":"API Zeus com pendências";
+      $("healthDot").style.background=d.api==="ok"?"var(--good)":"var(--warn)";
+      $("apiState").textContent=d.api==="ok"?"Online":"Indisponível";$("apiState").style.color=d.api==="ok"?"var(--good)":"var(--warn)";
+      $("dbState").textContent=d.mongodb==="connected"?"Conectado":d.mongodb==="not_configured"?"Configuração pendente":"Indisponível";
+      $("dbState").style.color=d.mongodb==="connected"?"var(--good)":"var(--warn)";
+      $("aiState").textContent=d.ollama==="configured"?"Configurado":"Pendente";$("aiState").style.color=d.ollama==="configured"?"var(--good)":"var(--warn)";
+      $("servicesMetric").textContent=[d.api==="ok",d.mongodb==="connected",d.ollama==="configured"].filter(Boolean).length+"/3";
+      $("servicesLabel").textContent="API, banco e IA"; 
+    }catch(e){$("healthText").textContent="API ainda não acessível";$("healthDot").style.background="var(--warn)";$("apiState").textContent="Aguardando deploy";$("dbState").textContent="Pendente";$("aiState").textContent="Pendente";$("servicesMetric").textContent="0/3";$("servicesLabel").textContent="A API será ativada no Render";}
+  }
+  $("refresh").addEventListener("click",checkServices);
+  $("send").addEventListener("click",async()=>{
+    const prompt=$("prompt").value.trim();if(!prompt)return;
+    $("send").disabled=true;$("chatStatus").textContent="Consultando o assistente…";$("answer").textContent="";
+    try{const r=await fetch(API_BASE+"/api/ai/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:prompt})});const d=await r.json();if(!r.ok)throw new Error(d.error||"Não foi possível consultar a IA.");$("answer").textContent=d.response||"O assistente não retornou texto.";$("chatStatus").textContent="Concluído";}
+    catch(e){$("chatStatus").textContent="Assistente indisponível";$("answer").textContent=e.message+" Verifique a configuração Ollama no Render.";}
+    finally{$("send").disabled=false;}
+  });
+  checkServices();
+</script>
+</body></html>
