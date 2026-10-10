@@ -1105,7 +1105,7 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
         "Content-Type": "application/json",
         ...(process.env.OLLAMA_API_KEY ? { Authorization: "Basic " + Buffer.from((process.env.OLLAMA_API_USERNAME || "morok") + ":" + process.env.OLLAMA_API_KEY).toString("base64") } : {})
       },
-      body: JSON.stringify({ model, messages, stream: wantsStream }),
+      body: JSON.stringify({ model, messages, stream: wantsStream, options: { num_ctx: Math.min(2048, Math.max(256, Number(process.env.OLLAMA_NUM_CTX || 512))) } }),
       signal: AbortSignal.timeout(90_000)
     });
     if (!response.ok) {
