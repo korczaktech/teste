@@ -26,6 +26,27 @@ Obrigatórias para os serviços existentes:
 - `ZEUS_AUTH_SECRET`: segredo aleatório exclusivo do Zeus, com pelo menos 32 caracteres, para assinar sessões. Gere um segredo novo e configure-o diretamente no Render.
 - `ZEUS_SIGNUP_ENABLED=true`: permite cadastro de novas contas; defina `false` para bloquear novos cadastros depois de preparar o acesso desejado.
 
+### Preparar OAuth do Google e Microsoft
+
+A API já contém o fluxo de autorização OAuth com `state`, PKCE e armazenamento criptografado dos tokens. Para habilitar os botões, crie os aplicativos nos consoles oficiais e configure diretamente no Render:
+
+**Google Cloud Console**
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
+- `GOOGLE_REDIRECT_URI=https://zeus-api-cm2d.onrender.com/api/connectors/google/callback`
+
+**Microsoft Entra admin center**
+- `MICROSOFT_CLIENT_ID`
+- `MICROSOFT_CLIENT_SECRET`
+- `MICROSOFT_TENANT_ID=common` (ou o tenant adequado)
+- `MICROSOFT_REDIRECT_URI=https://zeus-api-cm2d.onrender.com/api/connectors/microsoft/callback`
+
+**Proteção dos tokens**
+- `ZEUS_CONNECTOR_ENCRYPTION_KEY`: chave aleatória de 32 bytes, representada por 64 caracteres hexadecimais. Ela já foi configurada no serviço Render; mantenha-a privada e não a regenere após armazenar conexões, ou os tokens antigos não poderão ser descriptografados.
+- Registre os URIs de callback exatamente como acima nos consoles de cada provedor.
+- Revise a tela de consentimento, usuários de teste e exigências de verificação de cada plataforma. Algumas permissões podem exigir aprovação do administrador ou verificação do aplicativo.
+- Os escopos solicitados são iniciais. O fluxo OAuth está implementado, mas cada operação de produto (ler e-mail, editar arquivos, calendário etc.) ainda precisa de adaptadores de API, tratamento de renovação de token e testes de ponta a ponta antes de ser considerada concluída.
+
 ### Ativar voz neural do Zeus
 
 A API já inclui `POST /api/voice/tts`, com limite de texto, proteção básica contra excesso de solicitações e credenciais mantidas no backend. Para ativar a voz neural, crie um recurso **Azure Speech** e configure no Render:
@@ -52,6 +73,9 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `GET /api/me/tasks`, `POST /api/me/tasks`, `PATCH /api/me/tasks/:id`, `DELETE /api/me/tasks/:id` — tarefas isoladas por conta.
 - `GET /api/me/preferences`, `PATCH /api/me/preferences` — preferências de voz e segurança persistidas.
 - `GET /api/me/connectors` — catálogo e estado de configuração dos conectores.
+- `POST /api/connectors/google/start`, `POST /api/connectors/microsoft/start` — iniciar autorização OAuth com PKCE.
+- `GET /api/connectors/:provider/callback` — concluir o fluxo OAuth e guardar tokens criptografados.
+- `POST /api/me/connectors/:provider/disconnect` — remover a conexão local e tentar revogar o token Google.
 - `GET /api/me/messages?conversationId=...` — histórico de conversa por conta.
 - `GET /api/me/activity` — consultar a auditoria autenticada.
 - `POST /api/ai/chat` — conversa com o modelo Ollama; mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
