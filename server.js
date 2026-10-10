@@ -340,7 +340,9 @@ app.post("/api/voice/tts", requireAuthWhenConfigured, async (req, res) => {
   if (!/^[a-z0-9-]+$/i.test(region)) {
     return res.status(500).json({ error: "A região do serviço de voz está configurada incorretamente." });
   }
-  const ssml = "<speak version=\"1.0\" xml:lang=\"pt-BR\"><voice xml:lang=\"pt-BR\" name=\"pt-BR-AntonioNeural\"><prosody rate=\"-7%\" pitch=\"-2st\">" +
+  const requestedRate = Number(req.body?.rate);
+  const prosodyRate = requestedRate === 0.85 ? "-12%" : requestedRate === 1.1 ? "+8%" : "-7%";
+  const ssml = "<speak version=\"1.0\" xml:lang=\"pt-BR\"><voice xml:lang=\"pt-BR\" name=\"pt-BR-AntonioNeural\"><prosody rate=\"" + prosodyRate + "\" pitch=\"-2st\">" +
     escapeXml(text) + "</prosody></voice></speak>";
   try {
     const response = await fetch("https://" + region + ".tts.speech.microsoft.com/cognitiveservices/v1", {
