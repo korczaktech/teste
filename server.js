@@ -208,6 +208,9 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_tasks").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_messages").createIndex({ userId: 1, conversationId: 1, createdAt: 1 }),
       db.collection("zeus_preferences").createIndex({ userId: 1 }, { unique: true }),
+      db.collection("zeus_automations").createIndex({ userId: 1, nextRunAt: 1 }),
+      db.collection("zeus_automation_runs").createIndex({ userId: 1, createdAt: -1 }),
+      db.collection("zeus_notifications").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_audit").createIndex({ userId: 1, createdAt: -1 })
     ]).catch((error) => { indexesReady = null; throw error; });
   }
@@ -872,6 +875,77 @@ async function runReadOnlyPlan(req, plan, message) {
   }
   return results.slice(0, 6);
 }
+
+app.get("/api/me/automations", requireAuth, asyncRoute(async (req, res) => {
+  const items = await req.zeusDb.collection("zeus_automations").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
+  return res.json({ automations: items.map(item => ({ id: String(item._id), name: item.name, trigger: item.trigger, action: item.action, enabled: item.enabled, nextRunAt: item.nextRunAt, lastRunAt: item.lastRunAt, lastStatus: item.lastStatus, createdAt: item.createdAt })) });
+}));
+app.post("/api/me/automations", requireAuth, asyncRoute(async (req, res) => {
+  const name = typeof req.body?.name === "string" ? req.body.name.trim().slice(0, 120) : "";
+  const trigger = req.body?.trigger && typeof req.body.trigger === "object" ? req.body.trigger : {};
+  const action = req.body?.action && typeof req.body.action === "object" ? req.body.action : {};
+  if (!name) return res.status(400).json({ error: "Informe um nome para a automação." });
+  const existingCount = await req.zeusDb.collection("zeus_automations").countDocuments({ userId: req.zeusUser._id });
+  if (existingCount >= 50) return res.status(409).json({ error: "Limite de 50 automações por conta atingido." });
+  let nextRunAt;
+  let normalizedTrigger;
+  if (trigger.type === "once") {
+    const runAt = new Date(trigger.runAt);
+    if (Number.isNaN(runAt.getTime()) || runAt.getTime() < Date.now() + 60_000 || runAt.getTime() > Date.now() + 365 * 86400000) return res.status(400).json({ error: "O horário deve estar entre 1 minuto e 1 ano a partir de agora." });
+    nextRunAt = runAt;
+    normalizedTrigger = { type: "once", runAt };
+  } else if (trigger.type === "interval") {
+    const intervalMinutes = Number(trigger.intervalMinutes);
+    if (!Number.isInteger(intervalMinutes) || intervalMinutes < 15 || intervalMinutes > 10080) return res.status(400).json({ error: "O intervalo deve ser de 15 minutos a 7 dias." });
+    normalizedTrigger = { type: "interval", intervalMinutes };
+    nextRunAt = new Date(Date.now() + intervalMinutes * 60_000);
+  } else return res.status(400).json({ error: "Tipo de agendamento não suportado." });
+  let normalizedAction;
+  if (action.type === "notify") {
+    const message = typeof action.message === "string" ? action.message.trim().slice(0, 2000) : "";
+    if (!message) return res.status(400).json({ error: "A notificação precisa de uma mensagem." });
+    normalizedAction = { type: "notify", message };
+  } else if (action.type === "assistant.digest") {
+    const prompt = typeof action.prompt === "string" ? action.prompt.trim().slice(0, 1000) : "";
+    if (!prompt) return res.status(400).json({ error: "O resumo precisa de uma instrução." });
+    normalizedAction = { type: "assistant.digest", prompt };
+  } else return res.status(400).json({ error: "Ação de automação não permitida. Use notify ou assistant.digest." });
+  const item = { userId: req.zeusUser._id, name, trigger: normalizedTrigger, action: normalizedAction, enabled: true, nextRunAt, lastRunAt: null, lastStatus: null, createdAt: new Date(), updatedAt: new Date() };
+  const result = await req.zeusDb.collection("zeus_automations").insertOne(item);
+  await audit(req.zeusDb, req.zeusUser._id, "automation.created", { automationId: String(result.insertedId), name, trigger: normalizedTrigger.type, action: normalizedAction.type });
+  return res.status(201).json({ automation: { id: String(result.insertedId), ...item } });
+}));
+app.patch("/api/me/automations/:id", requireAuth, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de automação inválido." });
+  if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ error: "Informe enabled como verdadeiro ou falso." });
+  const update = { enabled: req.body.enabled, updatedAt: new Date() };
+  const result = await req.zeusDb.collection("zeus_automations").updateOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id }, { $set: update });
+  if (!result.matchedCount) return res.status(404).json({ error: "Automação não encontrada." });
+  await audit(req.zeusDb, req.zeusUser._id, "automation.toggled", { automationId: req.params.id, enabled: req.body.enabled });
+  return res.json({ ok: true });
+}));
+app.delete("/api/me/automations/:id", requireAuth, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de automação inválido." });
+  const result = await req.zeusDb.collection("zeus_automations").deleteOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id });
+  if (!result.deletedCount) return res.status(404).json({ error: "Automação não encontrada." });
+  await audit(req.zeusDb, req.zeusUser._id, "automation.deleted", { automationId: req.params.id });
+  return res.json({ ok: true });
+}));
+app.get("/api/me/automation-runs", requireAuth, asyncRoute(async (req, res) => {
+  const runs = await req.zeusDb.collection("zeus_automation_runs").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
+  return res.json({ runs: runs.map(run => ({ id: String(run._id), automationId: String(run.automationId), name: run.name, status: run.status, result: run.result, error: run.error, createdAt: run.createdAt, durationMs: run.durationMs })) });
+}));
+app.get("/api/me/notifications", requireAuth, asyncRoute(async (req, res) => {
+  const notifications = await req.zeusDb.collection("zeus_notifications").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
+  return res.json({ notifications: notifications.map(item => ({ id: String(item._id), title: item.title, content: item.content, read: item.read, createdAt: item.createdAt })) });
+}));
+app.patch("/api/me/notifications/:id/read", requireAuth, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de notificação inválido." });
+  const result = await req.zeusDb.collection("zeus_notifications").updateOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id }, { $set: { read: true, readAt: new Date() } });
+  if (!result.matchedCount) return res.status(404).json({ error: "Notificação não encontrada." });
+  return res.json({ ok: true });
+}));
+
 app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
   if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
@@ -947,4 +1021,79 @@ app.use((error, _req, res, next) => {
 });
 
 const port = Number(process.env.PORT || 10000);
+
+let automationTickRunning = false;
+async function processDueAutomations() {
+  if (automationTickRunning) return;
+  automationTickRunning = true;
+  try {
+    const db = await getDb();
+    if (!db) return;
+    await ensureFoundationIndexes(db);
+    const now = new Date();
+    const due = await db.collection("zeus_automations").find({
+      enabled: true, nextRunAt: { $lte: now },
+      $or: [{ lockedUntil: { $exists: false } }, { lockedUntil: { $lt: now } }]
+    }).sort({ nextRunAt: 1 }).limit(5).toArray();
+    for (const item of due) {
+      const lockUntil = new Date(Date.now() + 120_000);
+      const claim = await db.collection("zeus_automations").updateOne(
+        { _id: item._id, enabled: true, nextRunAt: item.nextRunAt, $or: [{ lockedUntil: { $exists: false } }, { lockedUntil: { $lt: new Date() } }] },
+        { $set: { lockedUntil: lockUntil } }
+      );
+      if (!claim.matchedCount) continue;
+      const startedAt = Date.now();
+      let status = "success";
+      let resultText = "";
+      let errorText = "";
+      try {
+        if (item.action?.type === "notify") {
+          resultText = String(item.action.message || "").slice(0, 2000);
+          await db.collection("zeus_notifications").insertOne({
+            userId: item.userId, automationId: item._id, title: item.name, content: resultText, read: false, createdAt: new Date()
+          });
+        } else if (item.action?.type === "assistant.digest") {
+          const base = (process.env.OLLAMA_BASE_URL || "").replace(/\/$/, "");
+          if (!base) throw new Error("Ollama não configurado");
+          const response = await fetch(base + "/api/chat", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: process.env.OLLAMA_MODEL || "llama3.2:1b", stream: false, messages: [
+              { role: "system", content: "Você é Zeus, assistente em português brasileiro. Gere um resumo útil da solicitação. Não alegue que acessou fontes ou executou ações externas sem dados reais." },
+              { role: "user", content: String(item.action.prompt || "").slice(0, 1000) }
+            ] }),
+            signal: AbortSignal.timeout(60_000)
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error("Ollama retornou HTTP " + response.status);
+          resultText = String(data.message?.content || "").slice(0, 8000);
+          if (!resultText) throw new Error("Ollama retornou uma resposta vazia");
+          await db.collection("zeus_notifications").insertOne({
+            userId: item.userId, automationId: item._id, title: item.name, content: resultText, read: false, createdAt: new Date()
+          });
+        } else throw new Error("Ação de automação não permitida");
+      } catch (error) {
+        status = "failed";
+        errorText = error instanceof Error ? error.message.slice(0, 300) : "Falha desconhecida";
+      }
+      const durationMs = Date.now() - startedAt;
+      await db.collection("zeus_automation_runs").insertOne({
+        userId: item.userId, automationId: item._id, name: item.name, status,
+        result: resultText, error: errorText || null, durationMs, createdAt: new Date()
+      });
+      const nextRunAt = item.trigger?.type === "interval" ? new Date(Date.now() + Number(item.trigger.intervalMinutes) * 60_000) : null;
+      await db.collection("zeus_automations").updateOne({ _id: item._id }, {
+        $set: { lastRunAt: new Date(), lastStatus: status, nextRunAt, enabled: item.trigger?.type === "interval", lockedUntil: null, updatedAt: new Date() },
+        $unset: { lockedUntil: "" }
+      });
+      await audit(db, item.userId, "automation.run." + status, { automationId: String(item._id), durationMs });
+    }
+  } catch (error) {
+    console.error("Zeus automation scheduler failed:", error instanceof Error ? error.message : "unknown");
+  } finally {
+    automationTickRunning = false;
+  }
+}
+const automationTimer = setInterval(() => { void processDueAutomations(); }, 30_000);
+if (typeof automationTimer.unref === "function") automationTimer.unref();
+
 app.listen(port, "0.0.0.0", () => console.log("ZeusAPI listening on " + port));
