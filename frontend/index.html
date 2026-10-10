@@ -45,6 +45,7 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 <button class="active" data-view="overview"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="5" rx="2"/><rect x="14" y="12" width="7" height="9" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/></svg>Visão geral</button>
 <button data-view="assistant"><svg viewBox="0 0 24 24"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1"/><circle cx="12" cy="12" r="5"/></svg>Assistente Zeus</button>
 <button data-view="integrations"><svg viewBox="0 0 24 24"><path d="M9 7H6a3 3 0 0 0 0 6h3m6-6h3a3 3 0 0 1 0 6h-3M8 10h8m-8 4h8"/><rect x="8" y="3" width="8" height="18" rx="4"/></svg>Ecossistema</button>
+<button data-view="computer"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8m-4-4v4"/></svg>Meu computador</button>
 <button data-view="content"><svg viewBox="0 0 24 24"><path d="M5 3h10l4 4v14H5z"/><path d="M14 3v5h5M8 12h8M8 16h8"/></svg>Conteúdo e tarefas</button>
 <button data-view="automations"><svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6L4 8.5"/><path d="M4 4v4.5h4.5M12 7v5l3 2"/></svg>Automações</button>
 <button data-view="activity"><svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h17M7 15l4-4 3 2 6-7"/></svg>Atividade e auditoria</button>
@@ -115,6 +116,15 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 </div></div>
 </section>
 
+<section class="view" id="view-computer">
+<div class="page-card"><div class="eyebrow">AGENTE LOCAL · LOOPBACK</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Meu computador</h2><p class="page-intro">Conecte o agente instalado no seu computador. O navegador não tem acesso irrestrito ao sistema; só serão exibidas as pastas autorizadas no agente local.</p>
+<div class="form-row"><label><span class="field-label">Pasta autorizada</span><select class="field" id="localRoot"><option value="">Conecte o agente primeiro</option></select></label><label><span class="field-label">Caminho relativo</span><input class="field" id="localPath" placeholder="Deixe vazio para a raiz"></label></div>
+<div class="button-row"><button class="btn gold" id="loadLocalRoots" type="button">Carregar pastas</button><button class="btn" id="listLocalFiles" type="button">Listar arquivos</button><button class="btn" id="upLocalFolder" type="button">Subir pasta</button></div><div class="resource-status" id="localAgentPageStatus" aria-live="polite">Configure o token em Configurações e conecte o agente.</div>
+<div class="task-list" id="localFileList"><div class="empty-note">Nenhuma pasta carregada.</div></div>
+<div class="resource-results" id="localFilePreview" hidden><div style="padding:12px;display:flex;justify-content:space-between;gap:10px;align-items:center"><b id="localFileName">Arquivo</b><button class="btn small gold" id="sendLocalFileToAssistant" type="button">Enviar ao assistente</button></div><pre id="localFileContent"></pre></div>
+<div class="integration-note">Leitura de texto até 1 MB. Escrita local e abertura de aplicativos ficam desativadas por padrão. Arquivos anexados ao assistente são enviados para análise, mas seu conteúdo não é salvo no histórico da conversa.</div></div>
+</section>
+
 <section class="view" id="view-content">
 <div class="page-card"><div class="eyebrow">CENTRO DE EXECUÇÃO</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Conteúdo e tarefas</h2><p class="page-intro">Organize pedidos e transforme ideias em tarefas. A criação abaixo é local à sessão; persistência, agenda e execução serão habilitadas nas fases de fundação e automação.</p>
 <form class="content-form" id="taskForm"><div class="form-row"><label><span class="field-label">Título da tarefa</span><input class="field" id="taskTitle" maxlength="120" placeholder="Ex.: Planejar publicação da semana" required></label><label><span class="field-label">Categoria</span><select class="field" id="taskCategory"><option>Planejamento</option><option>Conteúdo</option><option>Análise</option><option>Integração</option><option>Outro</option></select></label></div><label><span class="field-label">Detalhes</span><textarea class="field" id="taskDetails" maxlength="1000" placeholder="Contexto, resultado esperado e observações..."></textarea></label><div class="button-row"><button class="btn gold" type="submit">Adicionar tarefa</button></div></form></div>
@@ -154,6 +164,7 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 <div class="setting-row"><div><b>Voz neural dedicada</b><small>Requer provedor TTS e segredo no backend</small></div><span class="tag" id="neuralStatus">Verificando</span></div>
 </div>
 </div><div class="integration-note">Zeus usa uma única voz neural pt-BR quando o serviço estiver configurado; caso contrário, utiliza temporariamente a voz do navegador.</div></div>
+<div class="page-card"><div class="eyebrow">ACESSO LOCAL OPCIONAL</div><h3 style="font-size:17px;margin:7px 0">Agente do computador</h3><p class="page-intro">Execute o agente local no computador e cole o token de pareamento. O token fica somente nesta sessão do navegador e é enviado diretamente ao endereço local.</p><div class="form-row"><label><span class="field-label">Endereço do agente</span><input class="field" id="localAgentUrl" value="http://127.0.0.1:47821" placeholder="http://127.0.0.1:47821"></label><label><span class="field-label">Token de pareamento</span><input class="field" id="localAgentToken" type="password" autocomplete="off" placeholder="Token mostrado no terminal local"></label></div><div class="button-row"><button class="btn gold" id="saveLocalAgent" type="button">Conectar agente</button><button class="btn" id="forgetLocalAgent" type="button">Desconectar</button></div><div class="resource-status" id="localAgentSettingsStatus" aria-live="polite">Agente local desconectado.</div><div class="integration-note">Nunca cole o token do agente em mensagens para Zeus. Se suspeitar de exposição, remova o arquivo ~/.zeus-agent/token e reinicie o agente para gerar outro.</div></div>
 </section>
 <footer class="footer"><span>ZEUS · INTELIGÊNCIA CENTRAL KORCZAK</span><span id="footerStatus">Versão 0.2.0 · Interface de fundação</span></footer>
 </main></div>
@@ -161,7 +172,7 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 <script>
 const API_BASE=(window.ZEUS_API_URL||"https://zeus-api-cm2d.onrender.com").replace(/\/$/,"");
 const $=id=>document.getElementById(id);
-const pageNames={overview:"Bom dia. Vamos comandar?",assistant:"Assistente Zeus",integrations:"Seu ecossistema",content:"Conteúdo e tarefas",automations:"Automações",activity:"Atividade e auditoria",settings:"Configurações"};
+const pageNames={overview:"Bom dia. Vamos comandar?",assistant:"Assistente Zeus",integrations:"Seu ecossistema",computer:"Meu computador",content:"Conteúdo e tarefas",automations:"Automações",activity:"Atividade e auditoria",settings:"Configurações"};
 const icons={};
 let activity=[{title:"Central Zeus inicializada",detail:"Interface pronta · modo de demonstração",time:"Agora"},{title:"Integrações protegidas por autorização",detail:"Nenhuma conta externa conectada",time:"Agora"}];
 let tasks=[];let lastAnswer="";let recognition=null;let listening=false;let availableVoices=[];let neuralTtsConfigured=false;let activeAudio=null;let activeAudioUrl=null;
