@@ -966,6 +966,10 @@ app.patch("/api/me/notifications/:id/read", requireAuth, asyncRoute(async (req, 
 }));
 
 
+app.get("/api/me/action-requests", requireAuth, asyncRoute(async (req, res) => {
+  const requests = await req.zeusDb.collection("zeus_action_requests").find({ userId: req.zeusUser._id, status: "pending", confirmationExpiresAt: { $gt: new Date() } }).sort({ createdAt: -1 }).limit(20).toArray();
+  return res.json({ requests: requests.map(item => ({ id: String(item._id), provider: item.provider, summary: item.summary, conversationId: item.conversationId, expiresAt: item.confirmationExpiresAt, createdAt: item.createdAt })) });
+}));
 app.post("/api/me/action-requests/:id/confirm", requireAuth, asyncRoute(async (req, res) => {
   if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de confirmação inválido." });
   const request = await req.zeusDb.collection("zeus_action_requests").findOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id, status: "pending" });
@@ -986,6 +990,7 @@ app.post("/api/me/action-requests/:id/confirm", requireAuth, asyncRoute(async (r
     return res.status(502).json({ error: "O Morok não conseguiu executar a ação. Nada foi confirmado como concluído." });
   }
   await req.zeusDb.collection("zeus_action_requests").updateOne({ _id: request._id }, { $set: { status: "completed", result: result.result, completedAt: new Date(), updatedAt: new Date() } });
+  if (request.conversationId) await req.zeusDb.collection("zeus_messages").insertOne({ userId: req.zeusUser._id, conversationId: request.conversationId, role: "assistant", content: "Ação executada após confirmação explícita. Resultado: " + JSON.stringify(result.result).slice(0, 6000), createdAt: new Date() });
   await audit(req.zeusDb, req.zeusUser._id, "action.confirmed_and_executed", { provider: "morok", toolId: request.toolId, requestId: String(request._id) });
   return res.json({ ok: true, summary: request.summary, result: result.result });
 }));
@@ -996,6 +1001,8 @@ app.post("/api/me/action-requests/:id/cancel", requireAuth, asyncRoute(async (re
     { $set: { status: "cancelled", updatedAt: new Date() } }
   );
   if (!result.matchedCount) return res.status(404).json({ error: "Ação pendente não encontrada." });
+  const request = await req.zeusDb.collection("zeus_action_requests").findOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id });
+  if (request?.conversationId) await req.zeusDb.collection("zeus_messages").insertOne({ userId: req.zeusUser._id, conversationId: request.conversationId, role: "assistant", content: "Ação cancelada. Nada foi executado.", createdAt: new Date() });
   await audit(req.zeusDb, req.zeusUser._id, "action.cancelled", { requestId: req.params.id });
   return res.json({ ok: true });
 }));
@@ -1023,9 +1030,10 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
         const confirmationExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
         const inserted = await req.zeusDb.collection("zeus_action_requests").insertOne({
           userId: req.zeusUser._id, provider: "morok", toolId: proposal.toolId, input: proposal.input,
-          summary: proposal.summary, originalMessage: message.slice(0, 2000), status: "pending",
+          summary: proposal.summary, originalMessage: message.slice(0, 2000), conversationId, status: "pending",
           confirmationExpiresAt, expiresAt, createdAt: now, updatedAt: now
         });
+        await req.zeusDb.collection("zeus_messages").insertMany([{ userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: now }, { userId: req.zeusUser._id, conversationId, role: "assistant", content: "Confirmação necessária: " + proposal.summary, createdAt: new Date() }]);
         await audit(req.zeusDb, req.zeusUser._id, "action.confirmation.required", { provider: "morok", toolId: proposal.toolId, requestId: String(inserted.insertedId) });
         return res.status(409).json({ confirmationRequired: true, actionRequestId: String(inserted.insertedId), summary: proposal.summary, expiresAt: confirmationExpiresAt.toISOString() });
       }
