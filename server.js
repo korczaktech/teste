@@ -209,6 +209,7 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_messages").createIndex({ userId: 1, conversationId: 1, createdAt: 1 }),
       db.collection("zeus_preferences").createIndex({ userId: 1 }, { unique: true }),
       db.collection("zeus_automations").createIndex({ userId: 1, nextRunAt: 1 }),
+      db.collection("zeus_action_requests").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_automation_runs").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_notifications").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_audit").createIndex({ userId: 1, createdAt: -1 })
@@ -799,6 +800,24 @@ function extractSearchQuery(message) {
   const words = message.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, " ").split(/\s+/).filter(word => word.length > 2 && !ignored.has(word) && !["google","drive","gmail","outlook","microsoft","nexus","nexa","morok","planilha","planilhas","documento","documentos","arquivo","arquivos","email","emails","e-mail","e-mails","calendario","calendário","agenda","reunião","reuniao","relatorio","relatório"].includes(word));
   return words.slice(-3).join(" ").slice(0, 80) || message.trim().slice(0, 80);
 }
+function buildConfirmedAction(message) {
+  const task = message.match(/\b(?:crie|criar|adicione|adicionar|registre|registrar)\s+(?:uma\s+)?tarefa(?:\s+(?:chamada|intitulada))?\s*[:\-]?\s*(.+)/i);
+  if (task) {
+    const title = task[1].replace(/[.!?]+$/, "").trim().replace(/^para\s+/i, "");
+    if (title) return { toolId: "task.create", input: { title: title.slice(0, 180) }, summary: "Criar uma tarefa no Morok: “" + title.slice(0, 180) + "”." };
+  }
+  const memory = message.match(/\b(?:guarde na memória|salve na memória|salve na memoria|guarde na memoria|lembre-se(?: de que)?|registre na memória)\s*[:,-]?\s*(.+)/i);
+  if (memory?.[1]?.trim()) {
+    const content = memory[1].trim().slice(0, 1500);
+    return { toolId: "memory.save", input: { content }, summary: "Salvar esta informação na memória do Morok: “" + content.slice(0, 180) + (content.length > 180 ? "…" : "") + "”." };
+  }
+  const reminder = message.match(/\b(?:me lembre|lembre-me|crie um lembrete)\s+(?:de\s+|para\s+)?(.+)/i);
+  if (reminder?.[1]?.trim()) {
+    const content = reminder[1].trim().slice(0, 1000);
+    return { toolId: "notification.create", input: { content }, summary: "Criar uma notificação no Morok: “" + content.slice(0, 180) + (content.length > 180 ? "…" : "") + "”." };
+  }
+  return null;
+}
 function buildReadOnlyPlan(message) {
   const text = message.toLocaleLowerCase("pt-BR");
   const q = extractSearchQuery(message);
@@ -946,6 +965,40 @@ app.patch("/api/me/notifications/:id/read", requireAuth, asyncRoute(async (req, 
   return res.json({ ok: true });
 }));
 
+
+app.post("/api/me/action-requests/:id/confirm", requireAuth, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de confirmação inválido." });
+  const request = await req.zeusDb.collection("zeus_action_requests").findOne({ _id: new ObjectId(req.params.id), userId: req.zeusUser._id, status: "pending" });
+  if (!request) return res.status(404).json({ error: "Ação pendente não encontrada." });
+  if (request.confirmationExpiresAt <= new Date()) {
+    await req.zeusDb.collection("zeus_action_requests").updateOne({ _id: request._id }, { $set: { status: "expired", updatedAt: new Date() } });
+    return res.status(410).json({ error: "A confirmação expirou. Peça a ação novamente." });
+  }
+  const token = await getConnectorAccessToken(req.zeusDb, req.zeusUser._id, "morok");
+  if (token.error) return res.status(409).json({ error: "Reconecte o Morok AI antes de confirmar esta ação." });
+  const response = await fetch(productApiBase("morok") + "/tools/" + encodeURIComponent(request.toolId) + "/execute", {
+    method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token.accessToken },
+    body: JSON.stringify({ input: request.input, confirmed: true }), signal: AbortSignal.timeout(30_000)
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok !== true) {
+    await req.zeusDb.collection("zeus_action_requests").updateOne({ _id: request._id }, { $set: { status: "failed", error: "O Morok recusou a execução.", updatedAt: new Date() } });
+    return res.status(502).json({ error: "O Morok não conseguiu executar a ação. Nada foi confirmado como concluído." });
+  }
+  await req.zeusDb.collection("zeus_action_requests").updateOne({ _id: request._id }, { $set: { status: "completed", result: result.result, completedAt: new Date(), updatedAt: new Date() } });
+  await audit(req.zeusDb, req.zeusUser._id, "action.confirmed_and_executed", { provider: "morok", toolId: request.toolId, requestId: String(request._id) });
+  return res.json({ ok: true, summary: request.summary, result: result.result });
+}));
+app.post("/api/me/action-requests/:id/cancel", requireAuth, asyncRoute(async (req, res) => {
+  if (!ObjectId.isValid(req.params.id)) return res.status(400).json({ error: "ID de ação inválido." });
+  const result = await req.zeusDb.collection("zeus_action_requests").updateOne(
+    { _id: new ObjectId(req.params.id), userId: req.zeusUser._id, status: "pending" },
+    { $set: { status: "cancelled", updatedAt: new Date() } }
+  );
+  if (!result.matchedCount) return res.status(404).json({ error: "Ação pendente não encontrada." });
+  await audit(req.zeusDb, req.zeusUser._id, "action.cancelled", { requestId: req.params.id });
+  return res.json({ ok: true });
+}));
 app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
   if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
@@ -960,6 +1013,23 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
     content: "Você é Zeus, assistente central da Korczak Technologies. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem uma integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços."
   };
   try {
+    if (req.zeusUser && req.zeusDb) {
+      const proposal = buildConfirmedAction(message);
+      if (proposal) {
+        const morokConnection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider: "morok", status: "connected" });
+        if (!morokConnection) return res.status(409).json({ error: "Conecte o Morok AI no Ecossistema antes de executar esta ação." });
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+        const confirmationExpiresAt = new Date(now.getTime() + 15 * 60 * 1000);
+        const inserted = await req.zeusDb.collection("zeus_action_requests").insertOne({
+          userId: req.zeusUser._id, provider: "morok", toolId: proposal.toolId, input: proposal.input,
+          summary: proposal.summary, originalMessage: message.slice(0, 2000), status: "pending",
+          confirmationExpiresAt, expiresAt, createdAt: now, updatedAt: now
+        });
+        await audit(req.zeusDb, req.zeusUser._id, "action.confirmation.required", { provider: "morok", toolId: proposal.toolId, requestId: String(inserted.insertedId) });
+        return res.status(409).json({ confirmationRequired: true, actionRequestId: String(inserted.insertedId), summary: proposal.summary, expiresAt: confirmationExpiresAt.toISOString() });
+      }
+    }
     const messages = [systemMessage];
     if (req.zeusUser && req.zeusDb) {
       const previous = await req.zeusDb.collection("zeus_messages")
