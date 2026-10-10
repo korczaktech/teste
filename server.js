@@ -194,7 +194,7 @@ app.get("/api/status", async (_req, res) => {
   });
 });
 
-app.post("/api/voice/tts", async (req, res) => {
+app.post("/api/voice/tts", requireAuthWhenConfigured, async (req, res) => {
   const text = typeof req.body?.text === "string" ? req.body.text.trim() : "";
   if (!text || text.length > 1200) {
     return res.status(400).json({ error: "Envie um texto entre 1 e 1.200 caracteres." });
