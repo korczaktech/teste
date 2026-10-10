@@ -823,39 +823,55 @@ function buildReadOnlyPlan(message) {
   }
   if (/\b(na web|na internet|pesquise na web|pesquisar na web|busca na internet)\b/.test(text)) add("morok", "web-search", { q }, "Pesquisa na web via Morok");
   if (/\b(tarefas|task list|minhas tarefas)\b/.test(text) && !plan.some(step => step.resource === "tasks")) add("morok", "tasks", {}, "Tarefas do Morok");
-  if (/\b(contatos|contactos)\b/.test(text)) add(/\b(outlook|microsoft|microsoft 365)\b/.test(text) ? "microsoft" : "morok", "contacts", { q }, "Contatos");
+  if (/\b(contatos|contactos)\b/.test(text)) add(/\b(outlook|microsoft|microsoft 365)\b/.test(text) ? "microsoft" : /\b(google|gmail)\b/.test(text) ? "google" : "morok", "contacts", { q }, "Contatos");
   if (/\b(arquivos|ficheiros)\b/.test(text) && /\b(morok)\b/.test(text)) add("morok", "files", { q }, "Arquivos do Morok");
   if (/\b(automação|automacoes|automações)\b/.test(text) && /\b(morok)\b/.test(text)) add("morok", "automations", {}, "Automações do Morok");
   return plan.slice(0, 4);
 }
-async function runReadOnlyPlan(req, plan) {
-  const results = [];
+async function queryPlannedResource(req, step) {
+  const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider: step.provider, status: "connected" });
+  if (!connection) return { ...step, status: "not_connected", note: "Este serviço ainda não está conectado à conta Zeus." };
   const authHeader = String(req.headers.authorization || "");
   const apiBase = (process.env.ZEUS_PUBLIC_API_URL || "https://zeus-api-cm2d.onrender.com").replace(/\/$/, "");
+  try {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(step.params || {})) if (typeof value === "string" && value) params.set(key, value);
+    const suffix = params.toString() ? "?" + params.toString() : "";
+    const response = await fetch(apiBase + "/api/me/connectors/" + encodeURIComponent(step.provider) + "/resources/" + encodeURIComponent(step.resource) + suffix, {
+      headers: { Authorization: authHeader, Accept: "application/json" },
+      signal: AbortSignal.timeout(30_000)
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) return { ...step, status: "error", note: data.error || "O conector não conseguiu consultar o serviço." };
+    return { ...step, status: "ok", data: data.data };
+  } catch (error) {
+    return { ...step, status: "error", note: error instanceof Error ? error.message : "Falha na consulta." };
+  }
+}
+async function runReadOnlyPlan(req, plan, message) {
+  const results = [];
+  const lower = message.toLocaleLowerCase("pt-BR");
   for (const step of plan) {
-    const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider: step.provider, status: "connected" });
-    if (!connection) {
-      results.push({ ...step, status: "not_connected", note: "Este serviço ainda não está conectado à conta Zeus." });
-      continue;
+    const result = await queryPlannedResource(req, step);
+    results.push(result);
+    if (result.status !== "ok" || step.provider !== "google" || step.resource !== "drive-search" || !Array.isArray(result.data?.files)) continue;
+    if (/\b(planilha|planilhas|spreadsheet|números|numeros)\b/.test(lower)) {
+      const sheet = result.data.files.find(file => file.mimeType === "application/vnd.google-apps.spreadsheet");
+      if (sheet) {
+        const values = await queryPlannedResource(req, { provider: "google", resource: "spreadsheet-values", params: { id: String(sheet.id), range: "A1:Z100" }, label: "Dados da planilha " + String(sheet.name || "") });
+        results.push(values);
+      }
     }
-    try {
-      const params = new URLSearchParams();
-      for (const [key, value] of Object.entries(step.params || {})) if (typeof value === "string" && value) params.set(key, value);
-      const suffix = params.toString() ? "?" + params.toString() : "";
-      const response = await fetch(apiBase + "/api/me/connectors/" + encodeURIComponent(step.provider) + "/resources/" + encodeURIComponent(step.resource) + suffix, {
-        headers: { Authorization: authHeader, Accept: "application/json" },
-        signal: AbortSignal.timeout(30_000)
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) results.push({ ...step, status: "error", note: data.error || "O conector não conseguiu consultar o serviço." });
-      else results.push({ ...step, status: "ok", data: data.data });
-    } catch (error) {
-      results.push({ ...step, status: "error", note: error instanceof Error ? error.message : "Falha na consulta." });
+    if (/\b(documento|documentos|relatório|relatorio)\b/.test(lower)) {
+      const document = result.data.files.find(file => file.mimeType === "application/vnd.google-apps.document");
+      if (document) {
+        const doc = await queryPlannedResource(req, { provider: "google", resource: "document", params: { id: String(document.id) }, label: "Conteúdo do documento " + String(document.name || "") });
+        results.push(doc);
+      }
     }
   }
-  return results;
+  return results.slice(0, 6);
 }
-
 app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
   if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
@@ -887,7 +903,7 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
     if (req.zeusUser && req.zeusDb) {
       const plan = buildReadOnlyPlan(message);
       if (plan.length) {
-        const results = await runReadOnlyPlan(req, plan);
+        const results = await runReadOnlyPlan(req, plan, message);
         await audit(req.zeusDb, req.zeusUser._id, "orchestration.read_plan", { steps: results.map(step => ({ provider: step.provider, resource: step.resource, status: step.status })) });
         messages.push({
           role: "system",
