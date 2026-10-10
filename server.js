@@ -135,6 +135,7 @@ function oauthConfigured(provider) {
 function productApiBase(provider) {
   if (provider === "nexus") return (process.env.NEXUS_API_BASE_URL || "https://kzdoc.onrender.com/api/v1").replace(/\/$/, "");
   if (provider === "nexa") return (process.env.NEXA_API_BASE_URL || "https://kz-nexa.onrender.com/v1").replace(/\/$/, "");
+  if (provider === "morok") return (process.env.MOROK_API_BASE_URL || "https://morok-ai.onrender.com/api/v1").replace(/\/$/, "");
   return "";
 }
 function jwtExpiry(token, fallbackMs) {
@@ -519,7 +520,35 @@ app.post("/api/connectors/:provider/start", requireAuth, asyncRoute(async (req, 
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  if (provider === "nexus" || provider === "nexa") {
+  if (provider === "morok") {
+    const base = productApiBase(provider);
+    if (resource === "profile") url = base + "/auth/me";
+    if (resource === "tasks") url = base + "/tasks";
+    if (resource === "memories") url = base + "/memories" + (query ? "?q=" + encodeURIComponent(query) : "");
+    if (resource === "documents") url = base + "/documents";
+    if (resource === "document") {
+      if (!/^[A-Za-z0-9_-]{8,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de documento Morok válido." });
+      url = base + "/documents/" + encodeURIComponent(id);
+    }
+    if (resource === "files") url = base + "/files" + (query ? "?q=" + encodeURIComponent(query) : "");
+    if (resource === "file") {
+      if (!/^[A-Za-z0-9_-]{8,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de arquivo Morok válido." });
+      url = base + "/files/" + encodeURIComponent(id);
+    }
+    if (resource === "calendar") url = base + "/calendar";
+    if (resource === "contacts") url = base + "/contacts" + (query ? "?q=" + encodeURIComponent(query) : "");
+    if (resource === "notifications") url = base + "/notifications";
+    if (resource === "automations") url = base + "/automations";
+    if (resource === "planner-today") url = base + "/planner/today";
+    if (resource === "vault") url = base + "/vault";
+    if (resource === "conversations") url = base + "/conversations";
+    if (resource === "commands") url = base + "/commands";
+    if (resource === "permissions") url = base + "/permissions";
+    if (resource === "web-search") {
+      if (!query) return res.status(400).json({ error: "Informe q para pesquisar na web." });
+      url = base + "/web/search?q=" + encodeURIComponent(query);
+    }
+  } else if (provider === "nexus" || provider === "nexa") {
     const base = productApiBase(provider);
     if (resource === "profile") url = base + (provider === "nexus" ? "/users/me" : "/auth/me");
     if (provider === "nexus" && resource === "documents") url = base + "/documents?page=1&page_size=50";
@@ -594,7 +623,7 @@ app.get("/api/connectors/:provider/callback", asyncRoute(async (req, res) => {
 }));
 app.post("/api/connectors/korczak/:product/connect", requireAuth, asyncRoute(async (req, res) => {
   const product = req.params.product;
-  if (!["nexus", "nexa"].includes(product)) return res.status(404).json({ error: "Produto Korczak não suportado por este conector." });
+  if (!["nexus", "nexa", "morok"].includes(product)) return res.status(404).json({ error: "Produto Korczak não suportado por este conector." });
   const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
   const password = typeof req.body?.password === "string" ? req.body.password : "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length > 256) return res.status(400).json({ error: "Informe e-mail e senha válidos do produto escolhido." });
@@ -628,8 +657,8 @@ app.post("/api/connectors/korczak/:product/connect", requireAuth, asyncRoute(asy
 app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRoute(async (req, res) => {
   const provider = req.params.provider;
   const resource = req.params.resource;
-  if (!["google", "microsoft", "nexus", "nexa"].includes(provider)) return res.status(404).json({ error: "Provedor não suportado." });
-  const allowed = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams", "documents", "folders", "workbooks", "workbook", "templates"];
+  if (!["google", "microsoft", "nexus", "nexa", "morok"].includes(provider)) return res.status(404).json({ error: "Provedor não suportado." });
+  const allowed = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams", "documents", "folders", "workbooks", "workbook", "templates", "memories", "files", "file", "calendar", "notifications", "automations", "planner-today", "vault", "conversations", "commands", "permissions", "web-search"];
   if (!allowed.includes(resource)) return res.status(404).json({ error: "Recurso não permitido pelo catálogo Zeus." });
   const tokenResult = await getConnectorAccessToken(req.zeusDb, req.zeusUser._id, provider);
   if (tokenResult.error) {
@@ -719,7 +748,7 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
 }));
 app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(async (req, res) => {
   const provider = req.params.provider;
-  if (!["google", "microsoft", "nexus", "nexa", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
+  if (!["google", "microsoft", "nexus", "nexa", "morok", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
   const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider });
   if (connection && provider === "google" && connection.refreshToken) {
     try {
@@ -737,7 +766,8 @@ app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
     { id: "microsoft", name: "Microsoft 365", configured: oauthConfigured("microsoft"), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
     { id: "nexus", name: "Korczak Nexus", configured: true, capabilities: ["documents", "folders", "versions"] },
     { id: "nexa", name: "Korczak Nexa", configured: true, capabilities: ["workbooks", "sheets", "templates"] },
-    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "kos", "morok-ai"] },
+    { id: "morok", name: "Morok AI", configured: true, capabilities: ["memory", "tasks", "files", "documents", "calendar", "contacts", "automations", "web", "vault"] },
+    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "kos"] },
     { id: "other", name: "Outros serviços", configured: false, capabilities: ["official-api-connectors"] }
   ];
   const connections = await req.zeusDb.collection("zeus_connections").find({ userId: req.zeusUser._id }, { projection: { provider: 1, status: 1, connectedAt: 1 } }).toArray();
