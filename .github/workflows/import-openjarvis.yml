@@ -20,7 +20,7 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 https://github.com/open-jarvis/OpenJarvis.git /tmp/OpenJarvis
-          # Keep destination workflows intact: this GitHub integration token cannot
+          # Preserve destination workflows because this integration token cannot
           # create or update workflow files in .github/workflows.
           rsync -a --delete --exclude='.git' --exclude='.github/workflows/***' /tmp/OpenJarvis/ "$GITHUB_WORKSPACE/"
           git config user.name "github-actions[bot]"
@@ -31,4 +31,6 @@ jobs:
             exit 0
           fi
           git commit -m "Import OpenJarvis upstream"
+          git fetch origin main
+          git rebase origin/main
           git push origin HEAD:main
