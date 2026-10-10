@@ -573,11 +573,12 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
   const tokenResult = await getConnectorAccessToken(req.zeusDb, req.zeusUser._id, provider);
   if (tokenResult.error) {
     const status = tokenResult.error === "not_connected" ? 409 : tokenResult.error === "reauthorization_required" ? 401 : 503;
-    return res.status(status).json({ error: tokenResult.error === "not_connected" ? "Conecte este serviço primeiro." : tokenResult.error === "reauthorization_required" ? "A autorização expirou. Reconecte a conta." : "O conector ainda não está configurado." });
+    const message = tokenResult.error === "not_connected" ? "Conecte este serviço primeiro." : tokenResult.error === "reauthorization_required" ? "A autorização expirou. Reconecte a conta." : "O conector ainda não está configurado.";
+    return res.status(status).json({ error: message });
   }
   const query = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 160) : "";
   const id = typeof req.query.id === "string" ? req.query.id : "";
-  let url;
+  let url = "";
   let extraHeaders = {};
   if (provider === "google") {
     if (resource === "profile") url = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -618,7 +619,45 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
     if (resource === "spreadsheet-values") {
       if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de planilha válido." });
       const range = typeof req.query.range === "string" ? req.query.range.slice(0, 120) : "A1:Z100";
-      if (!/^[A-Za-z0-9_!:
+      if (!/^[A-Za-z0-9_!:$ .-]+$/.test(range)) return res.status(400).json({ error: "Intervalo de planilha inválido." });
+      url = "https://sheets.googleapis.com/v4/spreadsheets/" + encodeURIComponent(id) + "/values/" + encodeURIComponent(range);
+    }
+  } else {
+    if (resource === "profile") url = "https://graph.microsoft.com/v1.0/me";
+    if (resource === "drive-search") {
+      if (!query) return res.status(400).json({ error: "Informe q para pesquisar no OneDrive." });
+      const safeQuery = query.replace(/'/g, "''");
+      url = "https://graph.microsoft.com/v1.0/me/drive/root/search(q='" + encodeURIComponent(safeQuery) + "')?$top=25&$select=id,name,file,folder,webUrl,lastModifiedDateTime,size";
+    }
+    if (resource === "mail-search") {
+      if (!query) return res.status(400).json({ error: "Informe q para pesquisar e-mails." });
+      url = "https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,receivedDateTime,isRead,webLink&$search=" + encodeURIComponent('"subject:' + query + '"');
+      extraHeaders = { ConsistencyLevel: "eventual" };
+    }
+    if (resource === "mail-message") {
+      if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de mensagem válido." });
+      url = "https://graph.microsoft.com/v1.0/me/messages/" + encodeURIComponent(id);
+    }
+    if (resource === "calendar-events") url = "https://graph.microsoft.com/v1.0/me/events?$top=50&$select=id,subject,start,end,organizer,webLink&$orderby=start/dateTime";
+    if (resource === "contacts") url = "https://graph.microsoft.com/v1.0/me/contacts?$top=100&$select=id,displayName,emailAddresses,businessPhones";
+    if (resource === "tasks-list") url = "https://graph.microsoft.com/v1.0/me/todo/lists";
+    if (resource === "tasks") {
+      if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) return res.status(400).json({ error: "Informe listId como id." });
+      url = "https://graph.microsoft.com/v1.0/me/todo/lists/" + encodeURIComponent(id) + "/tasks";
+    }
+    if (resource === "teams") url = "https://graph.microsoft.com/v1.0/me/joinedTeams";
+  }
+  if (!url) return res.status(400).json({ error: "Parâmetros insuficientes para este recurso." });
+  const result = await providerJson(url, tokenResult.accessToken, extraHeaders);
+  if (!result.ok) {
+    if (result.status === 401) return res.status(401).json({ error: "O provedor recusou a autorização. Reconecte a conta." });
+    console.error("Connector API error", provider, resource, result.status);
+    return res.status(502).json({ error: "O provedor não conseguiu concluir a consulta. Verifique as permissões concedidas." });
+  }
+  await audit(req.zeusDb, req.zeusUser._id, "connector.resource.read", { provider, resource });
+  return res.json({ provider, resource, data: result.data });
+}));
+app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(async (req, res) => {
   const provider = req.params.provider;
   if (!["google", "microsoft", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
   const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider });
