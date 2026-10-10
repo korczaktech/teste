@@ -128,7 +128,7 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 <section class="view" id="view-content">
 <div class="page-card"><div class="eyebrow">CENTRO DE EXECUÇÃO</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Conteúdo e tarefas</h2><p class="page-intro">Organize pedidos e transforme ideias em tarefas. A criação abaixo é local à sessão; persistência, agenda e execução serão habilitadas nas fases de fundação e automação.</p>
 <form class="content-form" id="taskForm"><div class="form-row"><label><span class="field-label">Título da tarefa</span><input class="field" id="taskTitle" maxlength="120" placeholder="Ex.: Planejar publicação da semana" required></label><label><span class="field-label">Categoria</span><select class="field" id="taskCategory"><option>Planejamento</option><option>Conteúdo</option><option>Análise</option><option>Integração</option><option>Outro</option></select></label></div><label><span class="field-label">Detalhes</span><textarea class="field" id="taskDetails" maxlength="1000" placeholder="Contexto, resultado esperado e observações..."></textarea></label><div class="button-row"><button class="btn gold" type="submit">Adicionar tarefa</button></div></form></div>
-<div class="page-card"><div class="panel-head"><h3 style="font-size:14px;margin:0">Sua lista de tarefas</h3><span class="tag" id="taskCount">0 tarefas</span></div><div id="taskList" class="task-list"><div class="empty-note">Nenhuma tarefa criada nesta sessão.</div></div></div>
+<div class="page-card"><div class="panel-head"><h3 style="font-size:14px;margin:0">Sua lista de tarefas</h3><span class="tag" id="taskCount">0 tarefas</span></div><div id="taskList" class="task-list"><div class="empty-note">Nenhuma tarefa criada ainda.</div></div></div>
 </section>
 
 <section class="view" id="view-automations">
@@ -145,11 +145,11 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 </section>
 
 <section class="view" id="view-activity">
-<div class="page-card"><div class="eyebrow">TRANSPARÊNCIA E CONTROLE</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Atividade e auditoria</h2><p class="page-intro">Registro desta sessão do navegador. O histórico durável e a trilha de auditoria no backend serão adicionados à fundação com autenticação e persistência.</p><div class="activity-list" id="fullActivity"></div><div class="integration-note">O histórico exibido agora é temporário e não representa uma auditoria persistida no servidor.</div></div>
+<div class="page-card"><div class="eyebrow">TRANSPARÊNCIA E CONTROLE</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Atividade e auditoria</h2><p class="page-intro">Eventos de conta e ações autenticadas são registrados no backend. Eventos de interface que ainda não possuem endpoint próprio podem permanecer temporários.</p><div class="activity-list" id="fullActivity"></div><div class="integration-note">A trilha de auditoria persistida inclui login, tarefas, preferências, consultas a conectores e execuções de automação.</div></div>
 </section>
 
 <section class="view" id="view-settings">
-<div class="page-card"><div class="eyebrow">PERSONALIZAÇÃO E SEGURANÇA</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Configurações</h2><p class="page-intro">Configure a experiência local. Preferências de conta e permissões persistentes serão adicionadas junto à autenticação.</p>
+<div class="page-card"><div class="eyebrow">PERSONALIZAÇÃO E SEGURANÇA</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Configurações</h2><p class="page-intro">Personalize voz e segurança. Quando autenticado, suas preferências são salvas na conta; no modo demonstração, ficam neste navegador.</p>
 <div class="settings-grid">
 <div class="panel"><div class="panel-head"><h3>Voz Zeus</h3><span class="tag">ÁUDIO</span></div>
 <div class="setting-row"><div><b>Respostas faladas</b><small>Usar a voz disponível no navegador</small></div><input class="toggle" id="settingTts" type="checkbox" checked></div>
