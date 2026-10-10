@@ -11,7 +11,7 @@ MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/q
 echo "== Zeus / Note20 — preparação do servidor local =="
 echo "Este script compila llama.cpp no próprio celular; mantenha-o carregando e com espaço livre."
 pkg update -y
-pkg install -y git cmake ninja clang make pkg-config curl libomp
+pkg install -y git cmake ninja clang make pkg-config curl
 
 mkdir -p "$ROOT" "$MODEL_DIR" "$ROOT/logs"
 
@@ -21,10 +21,10 @@ else
   git -C "$SRC" pull --ff-only
 fi
 
-echo "== Compilando llama-server (CPU) =="
+echo "== Compilando llama-server (CPU, sem dependência de OpenMP) =="
 cmake -S "$SRC" -B "$BUILD" -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DGGML_OPENMP=ON \
+  -DGGML_OPENMP=OFF \
   -DGGML_NATIVE=OFF \
   -DLLAMA_BUILD_SERVER=ON \
   -DLLAMA_BUILD_TESTS=OFF \
