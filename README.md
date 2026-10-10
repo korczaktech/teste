@@ -23,6 +23,8 @@ Obrigatórias para os serviços existentes:
 - `MONGODB_DATABASE=todas`
 - `OLLAMA_BASE_URL=https://morok-ollama.onrender.com`
 - `OLLAMA_MODEL=llama3.2:1b` (ou o nome exato de um modelo instalado no serviço Ollama).
+- `ZEUS_AUTH_SECRET`: segredo aleatório exclusivo do Zeus, com pelo menos 32 caracteres, para assinar sessões. Gere um segredo novo e configure-o diretamente no Render.
+- `ZEUS_SIGNUP_ENABLED=true`: permite cadastro de novas contas; defina `false` para bloquear novos cadastros depois de preparar o acesso desejado.
 
 ### Ativar voz neural do Zeus
 
@@ -43,8 +45,13 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 
 - `GET /` — identidade e versão da API.
 - `GET /health` — health check.
-- `GET /api/status` — estado de API, MongoDB, Ollama e configuração de voz neural.
-- `POST /api/ai/chat` — conversa com o modelo Ollama configurado.
+- `GET /api/status` — estado de API, MongoDB, Ollama, autenticação e voz neural.
+- `GET /api/auth/config` — informa se autenticação e cadastro estão configurados.
+- `POST /api/auth/register` / `POST /api/auth/login` — criar conta e iniciar sessão.
+- `GET /api/auth/me` / `POST /api/auth/logout` — validar e encerrar a sessão.
+- `GET /api/me/tasks`, `POST /api/me/tasks`, `PATCH /api/me/tasks/:id`, `DELETE /api/me/tasks/:id` — tarefas isoladas por conta.
+- `GET /api/me/activity` — consultar a auditoria autenticada.
+- `POST /api/ai/chat` — conversa com o modelo Ollama; exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
 - `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
 
 Exemplo de mensagem para o assistente:
