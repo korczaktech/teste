@@ -314,10 +314,26 @@ app.get("/api/status", async (_req, res) => {
     const db = await getDb();
     if (db) { await db.command({ ping: 1 }); database = "connected"; }
   } catch { database = "unavailable"; }
+  let ollama = "not_configured";
+  let ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:1b";
+  if (process.env.OLLAMA_BASE_URL) {
+    try {
+      const base = process.env.OLLAMA_BASE_URL.replace(/\\/$/, "");
+      const response = await fetch(base + "/api/tags", { signal: AbortSignal.timeout(8000), headers: process.env.OLLAMA_API_KEY ? { Authorization: "Bearer " + process.env.OLLAMA_API_KEY } : {} });
+      if (!response.ok) ollama = "unavailable";
+      else {
+        const payload = await response.json();
+        const models = Array.isArray(payload.models) ? payload.models : [];
+        const installed = models.some(item => String(item.name || "").toLowerCase() === ollamaModel.toLowerCase() || String(item.name || "").toLowerCase().startsWith(ollamaModel.toLowerCase() + ":"));
+        ollama = installed ? "available" : "model_missing";
+      }
+    } catch { ollama = "unavailable"; }
+  }
   res.json({
     api: "ok",
     mongodb: database,
-    ollama: process.env.OLLAMA_BASE_URL ? "configured" : "not_configured",
+    ollama,
+    ollamaModel,
     neuralTts: process.env.SPEECH_KEY && process.env.SPEECH_REGION ? "configured" : "not_configured",
     auth: authSecret() ? "configured" : "not_configured",
     voice: "pt-BR-AntonioNeural"
@@ -1084,12 +1100,25 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
     messages.push({ role: "user", content: message });
     const response = await fetch(base + "/api/chat", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.OLLAMA_API_KEY ? { Authorization: "Bearer " + process.env.OLLAMA_API_KEY } : {})
+      },
       body: JSON.stringify({ model, messages, stream: false }),
       signal: AbortSignal.timeout(90_000)
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) return res.status(502).json({ error: "Ollama não respondeu corretamente. Confira o modelo instalado e o serviço." });
+    if (!response.ok) {
+      console.error("Ollama upstream error:", response.status, String(data.error || data.message || response.statusText).slice(0, 500));
+      const detail = response.status === 401 || response.status === 403
+        ? "O serviço Ollama recusou a autenticação. Confira se o endpoint público exige OLLAMA_API_KEY."
+        : response.status === 404
+          ? "O endpoint de chat do Ollama não foi encontrado. Confira a URL base do serviço."
+          : response.status === 503
+            ? "O serviço Ollama está indisponível ou ainda inicializando."
+            : "Ollama respondeu com HTTP " + response.status + ". Confira o modelo e os logs do serviço.";
+      return res.status(502).json({ error: detail });
+    }
     const answer = typeof data.message?.content === "string" ? data.message.content : "";
     if (req.zeusUser && req.zeusDb && answer) {
       await req.zeusDb.collection("zeus_messages").insertOne({
