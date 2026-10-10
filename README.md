@@ -74,7 +74,7 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `GET /api/me/preferences`, `PATCH /api/me/preferences` — preferências de voz e segurança persistidas.
 - `GET /api/me/connectors` — catálogo e estado de configuração dos conectores.
 - `POST /api/connectors/google/start`, `POST /api/connectors/microsoft/start` — iniciar autorização OAuth com PKCE.
-- `POST /api/connectors/korczak/nexus/connect`, `POST /api/connectors/korczak/nexa/connect` — vincular uma sessão de produto; a senha não é armazenada.
+- `POST /api/connectors/korczak/:product/connect` — vincular uma sessão de Nexus, Nexa ou Morok; a senha não é armazenada.
 - `GET /api/me/connectors/:provider/resources/:resource` — consultas de leitura permitidas para Google, Microsoft, Nexus e Nexa.
 - `GET /api/connectors/:provider/callback` — concluir o fluxo OAuth e guardar tokens criptografados.
 - `POST /api/me/connectors/:provider/disconnect` — remover a conexão local e tentar revogar o token Google.
@@ -115,11 +115,11 @@ A ordem é intencional. Cada fase deve ser implementada, testada e corrigida ant
 - Armazenamento criptografado de tokens e testes de reconexão/expiração.
 
 ### Fase 3 — Ecossistema Korczak Technologies
-- Catálogo de conectores e autenticação de sessão do Nexus e Nexa via APIs já existentes.
+- Catálogo de conectores e autenticação de sessão do Nexus, Nexa e Morok AI via APIs existentes.
 - Tokens dos produtos armazenados criptografados no backend; senhas não são persistidas.
-- Leitura inicial de perfil, documentos/pastas do Nexus e planilhas/modelos do Nexa.
-- Nexus/Nexa ainda exigem vinculação separada porque os backends não oferecem SSO/OIDC comum.
-- HUB, KOS e Morok AI continuam pendentes de contratos de API estáveis e autenticação suportada.
+- Leitura inicial de documentos/pastas do Nexus, planilhas/modelos do Nexa e memórias/tarefas/arquivos/calendário do Morok.
+- Nexus, Nexa e Morok ainda exigem vinculação separada porque os backends não oferecem SSO/OIDC comum.
+- HUB e KOS continuam pendentes de contratos de API estáveis e autenticação suportada.
 
 ### Fase 4 — Inteligência central e orquestração
 - Planejador de tarefas com etapas, ferramentas e dependências.
