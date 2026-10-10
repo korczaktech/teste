@@ -106,12 +106,12 @@ function oauthConfig(provider) {
     tokenUrl: "https://oauth2.googleapis.com/token",
     scopes: [
       "openid", "email", "profile",
-      "https://www.googleapis.com/auth/drive.file",
-      "https://www.googleapis.com/auth/documents",
-      "https://www.googleapis.com/auth/spreadsheets",
-      "https://www.googleapis.com/auth/presentations",
+      "https://www.googleapis.com/auth/drive.readonly",
+      "https://www.googleapis.com/auth/documents.readonly",
+      "https://www.googleapis.com/auth/spreadsheets.readonly",
+      "https://www.googleapis.com/auth/presentations.readonly",
       "https://www.googleapis.com/auth/gmail.readonly",
-      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/calendar.readonly",
       "https://www.googleapis.com/auth/contacts.readonly",
       "https://www.googleapis.com/auth/tasks.readonly"
     ]
@@ -123,7 +123,7 @@ function oauthConfig(provider) {
       redirectUri: process.env.MICROSOFT_REDIRECT_URI,
       authorizeUrl: "https://login.microsoftonline.com/" + encodeURIComponent(tenant) + "/oauth2/v2.0/authorize",
       tokenUrl: "https://login.microsoftonline.com/" + encodeURIComponent(tenant) + "/oauth2/v2.0/token",
-      scopes: ["openid", "profile", "email", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send", "Files.ReadWrite.All", "Calendars.ReadWrite", "Contacts.ReadWrite", "Tasks.ReadWrite", "Sites.Read.All", "Team.ReadBasic.All"]
+      scopes: ["openid", "profile", "email", "offline_access", "User.Read", "Mail.Read", "Files.Read", "Calendars.Read", "Contacts.Read", "Tasks.Read", "Team.ReadBasic.All"]
     };
   }
   return null;
@@ -672,8 +672,8 @@ app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(asyn
 }));
 app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
   const catalog = [
-    { id: "google", name: "Google Workspace", configured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), capabilities: ["gmail", "drive", "docs", "sheets", "calendar", "contacts", "tasks"] },
-    { id: "microsoft", name: "Microsoft 365", configured: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
+    { id: "google", name: "Google Workspace", configured: oauthConfigured("google"), capabilities: ["gmail", "drive", "docs", "sheets", "calendar", "contacts", "tasks"] },
+    { id: "microsoft", name: "Microsoft 365", configured: oauthConfigured("microsoft"), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
     { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "nexus", "nexa", "kos", "morok-ai"] },
     { id: "other", name: "Outros serviços", configured: false, capabilities: ["official-api-connectors"] }
   ];
