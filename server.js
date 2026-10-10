@@ -12,14 +12,19 @@ app.use((req, res, next) => {
   const allowed = new Set([
     "https://korczaktech.github.io",
     "https://zeus.morok.korczaktech.com.br",
-    "https://zeus.onrender.com"
+    "http://localhost:3000",
+    "http://localhost:5173"
   ]);
   const origin = req.headers.origin;
-  if (origin && (allowed.has(origin) || /^https:\/\/[a-z0-9-]+\.onrender\.com$/.test(origin))) {
+  if (origin && allowed.has(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Vary", "Origin");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Permissions-Policy", "camera=(), geolocation=(), payment=()");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(204);
   next();
