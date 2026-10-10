@@ -76,6 +76,63 @@ function allowTtsRequest(req) {
 }
 
 
+
+function connectorEncryptionKey() {
+  const raw = process.env.ZEUS_CONNECTOR_ENCRYPTION_KEY || "";
+  if (/^[a-f0-9]{64}$/i.test(raw)) return Buffer.from(raw, "hex");
+  const decoded = Buffer.from(raw, "base64");
+  return decoded.length === 32 ? decoded : null;
+}
+function encryptConnectorSecret(value) {
+  const key = connectorEncryptionKey();
+  if (!key) throw new Error("Connector encryption key is not configured");
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(String(value), "utf8"), cipher.final()]);
+  return { iv: iv.toString("base64"), tag: cipher.getAuthTag().toString("base64"), data: encrypted.toString("base64") };
+}
+function decryptConnectorSecret(record) {
+  const key = connectorEncryptionKey();
+  if (!key || !record?.iv || !record?.tag || !record?.data) return null;
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(record.iv, "base64"));
+  decipher.setAuthTag(Buffer.from(record.tag, "base64"));
+  return Buffer.concat([decipher.update(Buffer.from(record.data, "base64")), decipher.final()]).toString("utf8");
+}
+function oauthConfig(provider) {
+  if (provider === "google") return {
+    provider, clientId: process.env.GOOGLE_CLIENT_ID, clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    redirectUri: process.env.GOOGLE_REDIRECT_URI,
+    authorizeUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: [
+      "openid", "email", "profile",
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/documents",
+      "https://www.googleapis.com/auth/spreadsheets",
+      "https://www.googleapis.com/auth/presentations",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/contacts.readonly",
+      "https://www.googleapis.com/auth/tasks.readonly"
+    ]
+  };
+  if (provider === "microsoft") {
+    const tenant = process.env.MICROSOFT_TENANT_ID || "common";
+    return {
+      provider, clientId: process.env.MICROSOFT_CLIENT_ID, clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      redirectUri: process.env.MICROSOFT_REDIRECT_URI,
+      authorizeUrl: "https://login.microsoftonline.com/" + encodeURIComponent(tenant) + "/oauth2/v2.0/authorize",
+      tokenUrl: "https://login.microsoftonline.com/" + encodeURIComponent(tenant) + "/oauth2/v2.0/token",
+      scopes: ["openid", "profile", "email", "offline_access", "User.Read", "Mail.ReadWrite", "Mail.Send", "Files.ReadWrite.All", "Calendars.ReadWrite", "Contacts.ReadWrite", "Tasks.ReadWrite", "Sites.Read.All", "Team.ReadBasic.All"]
+    };
+  }
+  return null;
+}
+function oauthConfigured(provider) {
+  const config = oauthConfig(provider);
+  return Boolean(config?.clientId && config?.clientSecret && config?.redirectUri && connectorEncryptionKey());
+}
+
 const AUTH_SESSION_MS = 12 * 60 * 60 * 1000;
 let indexesReady;
 function authSecret() {
@@ -88,6 +145,7 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_users").createIndex({ email: 1 }, { unique: true }),
       db.collection("zeus_sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       db.collection("zeus_sessions").createIndex({ userId: 1 }),
+      db.collection("zeus_oauth_states").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       db.collection("zeus_tasks").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_messages").createIndex({ userId: 1, conversationId: 1, createdAt: 1 }),
       db.collection("zeus_preferences").createIndex({ userId: 1 }, { unique: true }),
@@ -381,6 +439,99 @@ app.patch("/api/me/preferences", requireAuth, asyncRoute(async (req, res) => {
   );
   await audit(req.zeusDb, req.zeusUser._id, "preferences.updated", { keys: Object.keys(update).filter((key) => key !== "updatedAt") });
   return res.json({ ok: true, preferences: update });
+}));
+app.post("/api/connectors/:provider/start", requireAuth, asyncRoute(async (req, res) => {
+  const provider = req.params.provider;
+  const config = oauthConfig(provider);
+  if (!config) return res.status(404).json({ error: "Provedor de conexão não reconhecido." });
+  if (!oauthConfigured(provider)) return res.status(503).json({ error: "Configure client ID, client secret, URL de callback e chave de criptografia no Render antes de conectar este provedor." });
+  const state = crypto.randomBytes(32).toString("base64url");
+  const verifier = crypto.randomBytes(48).toString("base64url");
+  const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+  await req.zeusDb.collection("zeus_oauth_states").insertOne({
+    _id: state, provider, userId: req.zeusUser._id, codeVerifier: verifier, expiresAt, createdAt: new Date()
+  });
+  const url = new URL(config.authorizeUrl);
+  url.searchParams.set("client_id", config.clientId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("response_type", "code");
+  url.searchParams.set("response_mode", "query");
+  url.searchParams.set("scope", config.scopes.join(" "));
+  url.searchParams.set("state", state);
+  url.searchParams.set("code_challenge", challenge);
+  url.searchParams.set("code_challenge_method", "S256");
+  if (provider === "google") {
+    url.searchParams.set("access_type", "offline");
+    url.searchParams.set("include_granted_scopes", "true");
+    url.searchParams.set("prompt", "consent");
+  }
+  return res.json({ url: url.toString(), provider });
+}));
+app.get("/api/connectors/:provider/callback", asyncRoute(async (req, res) => {
+  const provider = req.params.provider;
+  const config = oauthConfig(provider);
+  const frontendUrl = "https://zeus.morok.korczaktech.com.br/";
+  const redirectError = (reason) => res.redirect(frontendUrl + "?oauth=" + encodeURIComponent(provider) + "&status=error&reason=" + encodeURIComponent(reason));
+  if (!config || !oauthConfigured(provider)) return redirectError("not_configured");
+  if (typeof req.query.error === "string") return redirectError("consent_denied");
+  const state = typeof req.query.state === "string" ? req.query.state : "";
+  const code = typeof req.query.code === "string" ? req.query.code : "";
+  if (!state || !code) return redirectError("invalid_callback");
+  try {
+    const db = await getDb();
+    if (!db) return redirectError("database_unavailable");
+    await ensureFoundationIndexes(db);
+    const stateRecord = await db.collection("zeus_oauth_states").findOne({ _id: state, provider, expiresAt: { $gt: new Date() } });
+    if (!stateRecord) return redirectError("state_expired");
+    await db.collection("zeus_oauth_states").deleteOne({ _id: state });
+    const form = new URLSearchParams({
+      client_id: config.clientId,
+      client_secret: config.clientSecret,
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: config.redirectUri,
+      code_verifier: stateRecord.codeVerifier
+    });
+    const tokenResponse = await fetch(config.tokenUrl, {
+      method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: form.toString(), signal: AbortSignal.timeout(20_000)
+    });
+    const tokens = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || !tokens.access_token) {
+      console.error("OAuth token exchange failed for", provider, "HTTP", tokenResponse.status);
+      return redirectError("token_exchange_failed");
+    }
+    const previous = await db.collection("zeus_connections").findOne({ userId: stateRecord.userId, provider });
+    const connection = {
+      userId: stateRecord.userId, provider, status: "connected",
+      accessToken: encryptConnectorSecret(tokens.access_token),
+      refreshToken: tokens.refresh_token ? encryptConnectorSecret(tokens.refresh_token) : previous?.refreshToken || null,
+      scopes: typeof tokens.scope === "string" ? tokens.scope.split(" ") : config.scopes,
+      tokenExpiresAt: new Date(Date.now() + Math.max(60, Number(tokens.expires_in) || 3600) * 1000),
+      connectedAt: new Date(), updatedAt: new Date()
+    };
+    await db.collection("zeus_connections").updateOne({ userId: stateRecord.userId, provider }, { $set: connection }, { upsert: true });
+    await audit(db, stateRecord.userId, "connector.connected", { provider, scopes: connection.scopes.length });
+    return res.redirect(frontendUrl + "?oauth=" + encodeURIComponent(provider) + "&status=connected");
+  } catch (error) {
+    console.error("OAuth callback failed for", provider, error.message);
+    return redirectError("callback_failed");
+  }
+}));
+app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(async (req, res) => {
+  const provider = req.params.provider;
+  if (!["google", "microsoft", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
+  const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider });
+  if (connection && provider === "google" && connection.refreshToken) {
+    try {
+      const token = decryptConnectorSecret(connection.refreshToken);
+      if (token) await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token }).toString(), signal: AbortSignal.timeout(8000) });
+    } catch { /* Local token deletion still proceeds; user can revoke access in provider settings. */ }
+  }
+  await req.zeusDb.collection("zeus_connections").deleteOne({ userId: req.zeusUser._id, provider });
+  await audit(req.zeusDb, req.zeusUser._id, "connector.disconnected", { provider });
+  return res.json({ ok: true, note: provider === "microsoft" ? "A conexão local foi removida. Para revogar o consentimento Microsoft, remova o acesso nas configurações da sua conta Microsoft." : "Conexão removida." });
 }));
 app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
   const catalog = [
