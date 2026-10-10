@@ -210,6 +210,7 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_preferences").createIndex({ userId: 1 }, { unique: true }),
       db.collection("zeus_automations").createIndex({ userId: 1, nextRunAt: 1 }),
       db.collection("zeus_action_requests").createIndex({ userId: 1, createdAt: -1 }),
+      db.collection("zeus_action_requests").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       db.collection("zeus_automation_runs").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_notifications").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_audit").createIndex({ userId: 1, createdAt: -1 })
@@ -1033,7 +1034,7 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
           summary: proposal.summary, originalMessage: message.slice(0, 2000), conversationId, status: "pending",
           confirmationExpiresAt, expiresAt, createdAt: now, updatedAt: now
         });
-        await req.zeusDb.collection("zeus_messages").insertMany([{ userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: now }, { userId: req.zeusUser._id, conversationId, role: "assistant", content: "Confirmação necessária: " + proposal.summary, createdAt: new Date() }]);
+        await req.zeusDb.collection("zeus_messages").insertOne({ userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: now });
         await audit(req.zeusDb, req.zeusUser._id, "action.confirmation.required", { provider: "morok", toolId: proposal.toolId, requestId: String(inserted.insertedId) });
         return res.status(409).json({ confirmationRequired: true, actionRequestId: String(inserted.insertedId), summary: proposal.summary, expiresAt: confirmationExpiresAt.toISOString() });
       }
