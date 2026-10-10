@@ -5,7 +5,7 @@ O Zeus é a central da Korczak Technologies para organizar contas sociais, plane
 ## Infraestrutura (plano gratuito)
 
 - **Frontend:** GitHub Pages, publicado automaticamente a partir de `frontend/`.
-- **API:** Render Web Service (Node.js), health check em `/health`.
+- **API:** Render Web Service gratuito: `https://zeus-api-cm2d.onrender.com` (health check em `/health`).
 - **Banco:** MongoDB Atlas Free, projeto `Korczak Technologies`, cluster `KorczakCluster`, database `todas`.
 - **IA:** serviço Ollama existente no Render (`morok-ollama.onrender.com`), acessado pelo backend para não expor endpoint/modelo ao navegador.
 - **Domínio pretendido:** `https://zeus.morok.korczaktech.com.br`.
