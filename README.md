@@ -10,7 +10,7 @@ O Zeus está evoluindo de um painel de redes sociais para uma central de intelig
 - **Google/Microsoft:** fluxo OAuth com PKCE, armazenamento de tokens com AES-256-GCM, renovação de tokens e adaptadores de leitura implementados; faltam credenciais OAuth reais e testes com contas autorizadas.
 - **Korczak:** adaptadores iniciais para Nexus, Nexa e Morok AI; exigem vincular cada conta, e não há SSO compartilhado.
 - **Voz:** endpoint neural de texto para fala com voz fixa `pt-BR-AntonioNeural`; faltam as credenciais do Azure Speech para ativação. O navegador serve como fallback.
-- **Agente local:** código opcional em `desktop-agent/` para ler/listar arquivos em pastas explicitamente permitidas; precisa ser instalado e testado no computador do usuário.
+- **Agente local:** código opcional em `desktop-agent/` para ler/listar arquivos em pastas explicitamente permitidas; precisa ser instalado e testado no computador do usuário. Guia de instalação: [desktop-agent/README.md](desktop-agent/README.md).
 - **Automações:** notificações e resumos programados com histórico; o scheduler roda dentro da API e pode atrasar quando o serviço Render dorme.
 - **Publicação web:** GitHub Pages via GitHub Actions.
 - **API:** Render Web Service `https://zeus-api-cm2d.onrender.com` (health check em `/health`).
