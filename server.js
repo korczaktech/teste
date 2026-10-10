@@ -151,6 +151,20 @@ async function requireAuth(req, res, next) {
     return res.status(503).json({ error: "Não foi possível validar a sessão neste momento." });
   }
 }
+function requireAuthWhenConfigured(req, res, next) {
+  if (!authSecret()) return next(); // Demonstration mode until the owner configures authentication.
+  return requireAuth(req, res, next);
+}
+const aiAttempts = new Map();
+function allowAiRequest(req) {
+  const now = Date.now();
+  const key = req.ip || req.socket.remoteAddress || "unknown";
+  const recent = (aiAttempts.get(key) || []).filter((time) => now - time < 60_000);
+  if (recent.length >= 20) { aiAttempts.set(key, recent); return false; }
+  recent.push(now); aiAttempts.set(key, recent);
+  if (aiAttempts.size > 1000) for (const [ip, times] of aiAttempts) if (!times.some((time) => now - time < 60_000)) aiAttempts.delete(ip);
+  return true;
+}
 const authAttempts = new Map();
 function allowAuthAttempt(req) {
   const now = Date.now();
@@ -336,7 +350,8 @@ app.get("/api/me/activity", requireAuth, async (req, res) => {
   return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) });
 });
 
-app.post("/api/ai/chat", async (req, res) => {
+app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
+  if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
   if (!message || message.length > 4000) return res.status(400).json({ error: "Envie uma mensagem de até 4.000 caracteres." });
   const base = (process.env.OLLAMA_BASE_URL || "").replace(/\/$/, "");
