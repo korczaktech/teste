@@ -1082,7 +1082,7 @@ async function processDueAutomations() {
       });
       const nextRunAt = item.trigger?.type === "interval" ? new Date(Date.now() + Number(item.trigger.intervalMinutes) * 60_000) : null;
       await db.collection("zeus_automations").updateOne({ _id: item._id }, {
-        $set: { lastRunAt: new Date(), lastStatus: status, nextRunAt, enabled: item.trigger?.type === "interval", lockedUntil: null, updatedAt: new Date() },
+        $set: { lastRunAt: new Date(), lastStatus: status, nextRunAt, enabled: item.trigger?.type === "interval", updatedAt: new Date() },
         $unset: { lockedUntil: "" }
       });
       await audit(db, item.userId, "automation.run." + status, { automationId: String(item._id), durationMs });
