@@ -216,6 +216,10 @@ body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:-1;opa
 <script>
 const API_BASE=(window.ZEUS_API_URL||"https://zeus-api-cm2d.onrender.com").replace(/\/$/,"");
 const $=id=>document.getElementById(id);
+// Capture o envio antes de qualquer outro handler: impede o formulário de recarregar a página
+// e perder a tela atual. O mesmo fluxo atende clique no botão e Enter no campo de texto.
+document.addEventListener("click",event=>{const button=event.target.closest("#chatSend");if(!button)return;event.preventDefault();event.stopImmediatePropagation();void sendMessage($("chatInput")?.value||"","chatLog")},true);
+document.addEventListener("submit",event=>{if(event.target?.id!=="chatForm")return;event.preventDefault();event.stopImmediatePropagation();void sendMessage($("chatInput")?.value||"","chatLog")},true);
 const pageNames={overview:"Bom dia. Vamos comandar?",assistant:"Assistente Zeus",integrations:"Seu ecossistema",computer:"Meu computador",content:"Conteúdo e tarefas",automations:"Automações",activity:"Atividade e auditoria",settings:"Configurações"};
 const icons={};
 let activity=[{title:"Central Zeus inicializada",detail:"Interface pronta · modo de demonstração",time:"Agora"},{title:"Integrações protegidas por autorização",detail:"Nenhuma conta externa conectada",time:"Agora"}];
