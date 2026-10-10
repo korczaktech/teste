@@ -1036,7 +1036,7 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
     ? req.body.conversationId : crypto.randomUUID();
   const systemMessage = {
     role: "system",
-    content: "Você é Zeus, assistente central da Korczak Technologies. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem uma integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços."
+    content: "Você é Zeus, assistente central da Korczak Technologies, com presença serena e objetiva de uma central JARVIS. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços. Se o usuário pedir explicitamente para abrir um painel visual do Zeus, ou se um painel for essencial para a resposta, inclua exatamente um marcador no texto: [ZEUS_WINDOW:system], [ZEUS_WINDOW:integrations], [ZEUS_WINDOW:tasks] ou [ZEUS_WINDOW:computer], conforme o painel adequado. Não inclua marcador se nenhum painel for necessário."
   };
   try {
     if (req.zeusUser && req.zeusDb) {
@@ -1098,20 +1098,21 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
       });
     }
     messages.push({ role: "user", content: message });
+    const wantsStream = req.body?.stream === true;
     const response = await fetch(base + "/api/chat", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(process.env.OLLAMA_API_KEY ? { Authorization: "Basic " + Buffer.from((process.env.OLLAMA_API_USERNAME || "morok") + ":" + process.env.OLLAMA_API_KEY).toString("base64") } : {})
       },
-      body: JSON.stringify({ model, messages, stream: false }),
+      body: JSON.stringify({ model, messages, stream: wantsStream }),
       signal: AbortSignal.timeout(90_000)
     });
-    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
       console.error("Ollama upstream error:", response.status, String(data.error || data.message || response.statusText).slice(0, 500));
       const detail = response.status === 401 || response.status === 403
-        ? "O serviço Ollama recusou a autenticação. Confira se o endpoint público exige OLLAMA_API_KEY."
+        ? "O serviço Ollama recusou a autenticação. Confira a chave compartilhada do proxy."
         : response.status === 404
           ? "O endpoint de chat do Ollama não foi encontrado. Confira a URL base do serviço."
           : response.status === 503
@@ -1119,7 +1120,56 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
             : "Ollama respondeu com HTTP " + response.status + ". Confira o modelo e os logs do serviço.";
       return res.status(502).json({ error: detail });
     }
-    const answer = typeof data.message?.content === "string" ? data.message.content : "";
+    let answer = "";
+    if (wantsStream) {
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      const decoder = new TextDecoder();
+      let buffer = "";
+      try {
+        for await (const chunk of response.body) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() || "";
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let item;
+            try { item = JSON.parse(line); } catch { continue; }
+            const token = typeof item.message?.content === "string" ? item.message.content : "";
+            if (token) {
+              answer += token;
+              res.write("data: " + JSON.stringify({ token }) + "\n\n");
+            }
+            if (item.error) throw new Error(String(item.error).slice(0, 300));
+          }
+        }
+        if (buffer.trim()) {
+          try {
+            const item = JSON.parse(buffer);
+            const token = typeof item.message?.content === "string" ? item.message.content : "";
+            if (token) { answer += token; res.write("data: " + JSON.stringify({ token }) + "\n\n"); }
+            if (item.error) throw new Error(String(item.error).slice(0, 300));
+          } catch (error) { if (error.message && !/JSON/.test(error.message)) throw error; }
+        }
+        if (req.zeusUser && req.zeusDb && answer) {
+          await req.zeusDb.collection("zeus_messages").insertOne({
+            userId: req.zeusUser._id, conversationId, role: "assistant", content: answer.slice(0, 12000), createdAt: new Date()
+          });
+          await audit(req.zeusDb, req.zeusUser._id, "assistant.response", { conversationId, model, streamed: true });
+        }
+        res.write("data: " + JSON.stringify({ done: true, model, conversationId }) + "\n\n");
+        return res.end();
+      } catch (streamError) {
+        console.error("Ollama stream failed:", String(streamError.message || streamError).slice(0, 300));
+        res.write("data: " + JSON.stringify({ error: "A conexão com Ollama foi interrompida durante a resposta." }) + "\n\n");
+        return res.end();
+      }
+    }
+    const data = await response.json().catch(() => ({}));
+    answer = typeof data.message?.content === "string" ? data.message.content : "";
     if (req.zeusUser && req.zeusDb && answer) {
       await req.zeusDb.collection("zeus_messages").insertOne({
         userId: req.zeusUser._id, conversationId, role: "assistant", content: answer.slice(0, 12000), createdAt: new Date()
