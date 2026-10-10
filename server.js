@@ -788,6 +788,74 @@ app.get("/api/me/activity", requireAuth, asyncRoute(async (req, res) => {
   return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) });
 }));
 
+
+function extractSearchQuery(message) {
+  const focus = message.match(/\b(?:sobre|do|da|de|para|chamado|nomeado)\s+([a-z0-9_-]+)/i);
+  if (focus?.[1]) return focus[1].slice(0, 80);
+  const ignored = new Set(["zeus","por","favor","encontre","encontrar","procure","procurar","pesquise","pesquisar","buscar","busque","quero","preciso","mostre","listar","liste","abrir","abra","veja","ver","meu","minha","meus","minhas","uma","umas","uns","dos","das","com","sem","para","pelo","pela","no","na","nos","nas","the","and"]);
+  const words = message.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, " ").split(/\s+/).filter(word => word.length > 2 && !ignored.has(word) && !["google","drive","gmail","outlook","microsoft","nexus","nexa","morok","planilha","planilhas","documento","documentos","arquivo","arquivos","email","emails","e-mail","e-mails","calendario","calendário","agenda","reunião","reuniao","relatorio","relatório"].includes(word));
+  return words.slice(-3).join(" ").slice(0, 80) || message.trim().slice(0, 80);
+}
+function buildReadOnlyPlan(message) {
+  const text = message.toLocaleLowerCase("pt-BR");
+  const q = extractSearchQuery(message);
+  const plan = [];
+  const add = (provider, resource, params = {}, label = "") => {
+    if (!plan.some(step => step.provider === provider && step.resource === resource)) plan.push({ provider, resource, params, label: label || provider + " · " + resource });
+  };
+  if (/\b(nexus)\b/.test(text) && /\b(documento|documentos|pasta|pastas|arquivo|arquivos)\b/.test(text)) {
+    add("nexus", /\b(pasta|pastas)\b/.test(text) ? "folders" : "documents", {}, "Documentos do Nexus");
+  }
+  if (/\b(nexa)\b/.test(text) && /\b(planilha|planilhas|workbook|workbooks|modelo|modelos)\b/.test(text)) {
+    add("nexa", /\b(modelo|modelos)\b/.test(text) ? "templates" : "workbooks", {}, "Planilhas do Nexa");
+  }
+  if (/\b(morok)\b/.test(text) && /\b(tarefa|tarefas)\b/.test(text)) add("morok", "tasks", {}, "Tarefas do Morok");
+  if (/\b(memória|memórias|memoria|memorias)\b/.test(text)) add("morok", "memories", { q }, "Memórias do Morok");
+  if (/\b(arquivo|arquivos|documento|documentos)\b/.test(text) && /\b(drive|google)\b/.test(text)) {
+    add("google", "drive-search", { q }, "Arquivos do Google Drive");
+  }
+  if (/\b(gmail|e-mail|e-mails|email|emails)\b/.test(text)) {
+    add(/\b(outlook|microsoft|office 365|microsoft 365)\b/.test(text) ? "microsoft" : "google", "mail-search", { q }, "Pesquisa de e-mails");
+  }
+  if (/\b(calendário|calendario|agenda|reunião|reuniao|eventos)\b/.test(text)) {
+    const provider = /\b(outlook|microsoft|office 365|microsoft 365)\b/.test(text) ? "microsoft" : "google";
+    add(provider, "calendar-events", {}, "Eventos do calendário");
+  }
+  if (/\b(na web|na internet|pesquise na web|pesquisar na web|busca na internet)\b/.test(text)) add("morok", "web-search", { q }, "Pesquisa na web via Morok");
+  if (/\b(tarefas|task list|minhas tarefas)\b/.test(text) && !plan.some(step => step.resource === "tasks")) add("morok", "tasks", {}, "Tarefas do Morok");
+  if (/\b(contatos|contactos)\b/.test(text)) add(/\b(outlook|microsoft|microsoft 365)\b/.test(text) ? "microsoft" : "morok", "contacts", { q }, "Contatos");
+  if (/\b(arquivos|ficheiros)\b/.test(text) && /\b(morok)\b/.test(text)) add("morok", "files", { q }, "Arquivos do Morok");
+  if (/\b(automação|automacoes|automações)\b/.test(text) && /\b(morok)\b/.test(text)) add("morok", "automations", {}, "Automações do Morok");
+  return plan.slice(0, 4);
+}
+async function runReadOnlyPlan(req, plan) {
+  const results = [];
+  const authHeader = String(req.headers.authorization || "");
+  const apiBase = (process.env.ZEUS_PUBLIC_API_URL || "https://zeus-api-cm2d.onrender.com").replace(/\/$/, "");
+  for (const step of plan) {
+    const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider: step.provider, status: "connected" });
+    if (!connection) {
+      results.push({ ...step, status: "not_connected", note: "Este serviço ainda não está conectado à conta Zeus." });
+      continue;
+    }
+    try {
+      const params = new URLSearchParams();
+      for (const [key, value] of Object.entries(step.params || {})) if (typeof value === "string" && value) params.set(key, value);
+      const suffix = params.toString() ? "?" + params.toString() : "";
+      const response = await fetch(apiBase + "/api/me/connectors/" + encodeURIComponent(step.provider) + "/resources/" + encodeURIComponent(step.resource) + suffix, {
+        headers: { Authorization: authHeader, Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000)
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) results.push({ ...step, status: "error", note: data.error || "O conector não conseguiu consultar o serviço." });
+      else results.push({ ...step, status: "ok", data: data.data });
+    } catch (error) {
+      results.push({ ...step, status: "error", note: error instanceof Error ? error.message : "Falha na consulta." });
+    }
+  }
+  return results;
+}
+
 app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
   if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
   const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
@@ -815,6 +883,23 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
       await req.zeusDb.collection("zeus_messages").insertOne({
         userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: new Date()
       });
+    }
+    if (req.zeusUser && req.zeusDb) {
+      const plan = buildReadOnlyPlan(message);
+      if (plan.length) {
+        const results = await runReadOnlyPlan(req, plan);
+        await audit(req.zeusDb, req.zeusUser._id, "orchestration.read_plan", { steps: results.map(step => ({ provider: step.provider, resource: step.resource, status: step.status })) });
+        messages.push({
+          role: "system",
+          content: "Resultados de consultas somente leitura executadas pelo Zeus em serviços explicitamente conectados. Não invente dados ausentes. Se uma consulta falhou ou o serviço não está conectado, diga isso claramente. Resuma apenas o conteúdo retornado e mantenha a privacidade. Resultados: " + JSON.stringify(results).slice(0, 18000)
+        });
+      }
+      if (/\b(crie|criar|envie|enviar|apague|apagar|edite|editar|atualize|atualizar|compartilhe|compartilhar|marque|agende|agendar)\b/i.test(message)) {
+        messages.push({
+          role: "system",
+          content: "O usuário também pediu uma possível ação de escrita. Nenhuma escrita, envio, exclusão ou agendamento foi executado nesta etapa. Explique a proposta e diga que ela precisa de uma etapa de confirmação e de um conector de escrita habilitado."
+        });
+      }
     }
     messages.push({ role: "user", content: message });
     const response = await fetch(base + "/api/chat", {
