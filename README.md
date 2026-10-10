@@ -2,17 +2,22 @@
 
 O Zeus está evoluindo de um painel de redes sociais para uma central de inteligência e automação do ecossistema digital: Google, Microsoft, produtos Korczak Technologies e outros serviços com APIs oficiais. A interface usa uma identidade própria, com estética tecnológica inspirada em uma central de comando e referências visuais à mitologia de Zeus.
 
-## Estado atual
+## Estado atual do código
 
-- **Interface:** painel de comando, navegação por áreas, catálogo de integrações, tarefas locais de sessão, configurações e histórico temporário.
-- **Assistente:** API encaminha mensagens ao Ollama no backend.
-- **Voz:** ditado pelo reconhecimento de fala do navegador; endpoint neural de texto para fala implementado no backend, usando uma única voz fixa `pt-BR-AntonioNeural`.
+- **Interface:** central de comando com identidade visual Zeus, login, perfil, configurações, explorador de conectores, tarefas, automações e área do agente local.
+- **Contas e dados:** endpoints de autenticação, sessões, tarefas, preferências, mensagens, auditoria, notificações e automações persistidas no MongoDB.
+- **Orquestração:** plano inicial de consultas somente leitura pode combinar serviços conectados e enviar os resultados ao modelo para síntese.
+- **Google/Microsoft:** fluxo OAuth com PKCE, armazenamento de tokens com AES-256-GCM, renovação de tokens e adaptadores de leitura implementados; faltam credenciais OAuth reais e testes com contas autorizadas.
+- **Korczak:** adaptadores iniciais para Nexus, Nexa e Morok AI; exigem vincular cada conta, e não há SSO compartilhado.
+- **Voz:** endpoint neural de texto para fala com voz fixa `pt-BR-AntonioNeural`; faltam as credenciais do Azure Speech para ativação. O navegador serve como fallback.
+- **Agente local:** código opcional em `desktop-agent/` para ler/listar arquivos em pastas explicitamente permitidas; precisa ser instalado e testado no computador do usuário.
+- **Automações:** notificações e resumos programados com histórico; o scheduler roda dentro da API e pode atrasar quando o serviço Render dorme.
 - **Publicação web:** GitHub Pages via GitHub Actions.
 - **API:** Render Web Service `https://zeus-api-cm2d.onrender.com` (health check em `/health`).
 - **Banco:** MongoDB Atlas, database `todas`.
 - **Domínio:** `https://zeus.morok.korczaktech.com.br`.
 
-**Importante:** a interface e as rotas iniciais não significam que contas Google, Microsoft ou Korczak já estejam conectadas. Conectores externos só devem ser exibidos como ativos depois de autenticação, teste e autorização reais. Tarefas e histórico na interface ainda são temporários até a fundação de persistência e autenticação estar concluída.
+**Importante:** código implementado não equivale a integração validada. Google/Microsoft ainda precisam de client IDs e secrets; Nexus/Nexa/Morok precisam ser vinculados com suas contas; a voz neural precisa das credenciais Azure. A fase só será marcada como concluída depois de testes reais de ponta a ponta e revisão de segurança.
 
 ## Configuração da API no Render
 
