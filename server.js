@@ -2,6 +2,7 @@ const express = require("express");
 const { MongoClient } = require("mongodb");
 
 const app = express();
+app.set("trust proxy", 1);
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
 app.use((req, res, next) => {
