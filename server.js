@@ -318,7 +318,7 @@ app.get("/api/status", async (_req, res) => {
   let ollamaModel = process.env.OLLAMA_MODEL || "llama3.2:1b";
   if (process.env.OLLAMA_BASE_URL) {
     try {
-      const base = process.env.OLLAMA_BASE_URL.replace(/\\/$/, "");
+      const base = process.env.OLLAMA_BASE_URL.replace(/\/$/, "");
       const response = await fetch(base + "/api/tags", { signal: AbortSignal.timeout(8000), headers: process.env.OLLAMA_API_KEY ? { Authorization: "Bearer " + process.env.OLLAMA_API_KEY } : {} });
       if (!response.ok) ollama = "unavailable";
       else {
