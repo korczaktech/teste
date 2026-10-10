@@ -16,6 +16,7 @@ on:
       - "package.json"
       - "package-lock.json"
       - "frontend/**"
+      - "desktop-agent/**"
       - ".github/workflows/validate.yml"
   workflow_dispatch:
 permissions:
