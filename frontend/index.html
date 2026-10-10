@@ -89,8 +89,8 @@ main{min-width:0;max-width:1660px;width:100%;margin:0 auto;padding:25px clamp(17
 <section class="view" id="view-integrations">
 <div class="page-card"><div class="eyebrow">CONEXÕES E AUTORIZAÇÕES</div><h2 style="font-size:27px;letter-spacing:-.04em;margin:8px 0">Seu ecossistema</h2><p class="page-intro">O Zeus foi projetado para coordenar seus serviços digitais. Cada conector usará autenticação oficial, escopos mínimos e revogação de acesso. Nenhum serviço aparece como conectado até a integração ser implementada e validada.</p>
 <div class="feature-grid">
-<article class="feature"><div class="panel-icon">G</div><h3>Google Workspace</h3><p>Gmail, Drive, Docs, Sheets, Slides, Calendar, Meet, Contacts, Tasks e serviços disponíveis pela API oficial.</p><button class="btn small" data-coming="Google OAuth e APIs oficiais">Preparar conexão</button></article>
-<article class="feature"><div class="panel-icon">M</div><h3>Microsoft 365</h3><p>Outlook, OneDrive, Word, Excel, PowerPoint, Teams, SharePoint e To Do via Microsoft Graph.</p><button class="btn small" data-coming="Microsoft OAuth e Microsoft Graph">Preparar conexão</button></article>
+<article class="feature"><div class="panel-icon">G</div><h3>Google Workspace</h3><p>Gmail, Drive, Docs, Sheets, Slides, Calendar, Meet, Contacts, Tasks e serviços disponíveis pela API oficial.</p><button class="btn small gold" data-connect="google">Conectar Google</button></article>
+<article class="feature"><div class="panel-icon">M</div><h3>Microsoft 365</h3><p>Outlook, OneDrive, Word, Excel, PowerPoint, Teams, SharePoint e To Do via Microsoft Graph.</p><button class="btn small gold" data-connect="microsoft">Conectar Microsoft</button></article>
 <article class="feature"><div class="panel-icon">K</div><h3>Korczak Technologies</h3><p>Korczak HUB, Nexus, Nexa, KOS e Morok AI, conforme APIs e identidade compartilhada forem disponibilizadas.</p><button class="btn small" data-coming="Autenticação e APIs do ecossistema Korczak">Preparar conexão</button></article>
 <article class="feature"><div class="panel-icon">↗</div><h3>Outros serviços web</h3><p>Conectores modulares para serviços com API oficial, OAuth ou permissões seguras.</p><button class="btn small" data-coming="Catálogo modular de conectores">Ver arquitetura</button></article>
 <article class="feature"><div class="panel-icon">⌘</div><h3>Agente local futuro</h3><p>Para arquivos locais e controle do sistema operacional será necessário um agente instalado e explicitamente autorizado.</p><button class="btn small" data-coming="Agente desktop com permissões granulares">Ver plano</button></article>
@@ -169,6 +169,9 @@ document.querySelectorAll("[data-view]").forEach(b=>b.addEventListener("click",(
 document.querySelectorAll("[data-goto]").forEach(b=>b.addEventListener("click",()=>goto(b.dataset.goto)));
 document.querySelectorAll("[data-home]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();goto("overview")}));
 document.querySelectorAll("[data-coming]").forEach(b=>b.addEventListener("click",()=>toast(b.dataset.coming+" ainda não está implementado. Nenhuma conta foi conectada.")));
+document.querySelectorAll("[data-connect]").forEach(button=>button.addEventListener("click",async()=>{const provider=button.dataset.connect;if(!authToken){toast(authConfigured?"Entre na sua conta para conectar serviços.":"A autenticação ainda precisa ser configurada no servidor.");if(authConfigured)showAuthGate();return}button.disabled=true;button.textContent="Preparando autorização…";try{const r=await apiRequest("/api/connectors/"+encodeURIComponent(provider)+"/start",{method:"POST"});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||"Não foi possível iniciar a conexão.");window.location.assign(data.url)}catch(error){toast(error.message);button.disabled=false;button.textContent=provider==="google"?"Conectar Google":"Conectar Microsoft"}}));
+function handleOAuthReturn(){const params=new URLSearchParams(window.location.search);const provider=params.get("oauth");const status=params.get("status");if(!provider||!status)return;if(status==="connected"){toast(provider==="google"?"Google conectado com sucesso.":"Microsoft conectado com sucesso.");logActivity("Conector autorizado",provider)}else toast("A conexão "+provider+" não foi concluída ("+(params.get("reason")||"erro")+"). Confira as configurações OAuth.");window.history.replaceState({},document.title,window.location.pathname+window.location.hash)}
+
 document.querySelectorAll(".suggestion").forEach(b=>b.addEventListener("click",()=>{$("chatInput").value=b.textContent; $("chatInput").focus()}));
 const waveHeights=[10,17,24,14,30,20,35,17,25,39,22,31,15,28,38,19,30,13,23,34,17,26,12];
 $("wave").innerHTML=waveHeights.map((h,i)=>'<span style="--h:'+h+'px;animation-delay:'+(i*.055)+'s"></span>').join("");
@@ -197,7 +200,7 @@ $("settingTts").addEventListener("change",e=>savePreference("ttsEnabled",e.targe
 $("settingStt").addEventListener("change",e=>savePreference("sttEnabled",e.target.checked));
 $("settingConfirm").addEventListener("change",e=>savePreference("confirmSensitiveActions",e.target.checked));
 $("speechRate").addEventListener("change",e=>savePreference("speechRate",Number(e.target.value)));
-renderActivity();renderTasks();updateProfile();initializeAuth();checkServices();
+renderActivity();renderTasks();updateProfile();initializeAuth();checkServices();handleOAuthReturn();
 </script>
 </body>
 </html>
