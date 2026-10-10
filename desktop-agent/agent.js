@@ -246,11 +246,12 @@ async function createServer() {
         if (typeof body.content !== "string" || Buffer.byteLength(body.content, "utf8") > MAX_TEXT_FILE) return json(res, 413, { error: "Conteúdo inválido ou maior que 1 MB." });
         const candidate = resolveRelative(root, body.path);
         if (!TEXT_EXTENSIONS.has(path.extname(candidate).toLowerCase())) return json(res, 415, { error: "Extensão de arquivo não permitida para escrita." });
-        await fs.mkdir(path.dirname(candidate), { recursive: true });
         const parent = await verifyWithinRoot(root, path.dirname(candidate));
         const target = path.join(parent, path.basename(candidate));
         let backup = null;
         try {
+          const linkInfo = await fs.lstat(target);
+          if (linkInfo.isSymbolicLink()) return json(res, 403, { error: "Substituição de links simbólicos não é permitida." });
           const existing = await fs.stat(target);
           if (!existing.isFile() || existing.size > MAX_TEXT_FILE) return json(res, 400, { error: "Arquivo existente não pode ser substituído com segurança." });
           const previous = await fs.readFile(target);
