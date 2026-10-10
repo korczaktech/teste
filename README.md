@@ -4,7 +4,7 @@ O Zeus está evoluindo de um painel de redes sociais para uma central de intelig
 
 ## Estado atual do código
 
-- **Interface:** central de comando com identidade visual Zeus, login, perfil, configurações, explorador de conectores, tarefas, automações e área do agente local.
+- **Interface:** central de comando com identidade visual Zeus/JARVIS, núcleo animado, telemetria, canal de conversa com respostas transmitidas em tempo real, painéis contextuais que podem ser abertos por comando e botões para diagnóstico, conexões, missões e computador; login, perfil, configurações, tarefas, automações e área do agente local.
 - **Contas e dados:** endpoints de autenticação, sessões, tarefas, preferências, mensagens, auditoria, notificações e automações persistidas no MongoDB.
 - **Orquestração:** plano inicial de consultas somente leitura pode combinar serviços conectados e enviar os resultados ao modelo para síntese.
 - **Google/Microsoft:** fluxo OAuth com PKCE, armazenamento de tokens com AES-256-GCM, renovação de tokens e adaptadores de leitura implementados; faltam credenciais OAuth reais e testes com contas autorizadas.
@@ -27,7 +27,8 @@ Obrigatórias para os serviços existentes:
 - `MONGODB_URI`: URI SRV do cluster Atlas.
 - `MONGODB_DATABASE=todas`
 - `OLLAMA_BASE_URL=https://morok-ollama.onrender.com`
-- `OLLAMA_MODEL=llama3.2:1b` (ou o nome exato de um modelo instalado no serviço Ollama).
+- `OLLAMA_MODEL=qwen2.5:0.5b` (modelo usado pelo serviço `morok-ollama`).
+- `OLLAMA_API_USERNAME=morok` e `OLLAMA_API_KEY`: credenciais de Basic Auth do proxy Ollama; a chave deve corresponder a `MODEL_PROXY_KEY` no serviço `morok-ollama` e a `MODEL_API_KEY` no serviço Morok AI. Não versionar o valor real.
 - `ZEUS_AUTH_SECRET`: segredo aleatório exclusivo do Zeus, com pelo menos 32 caracteres, para assinar sessões. Gere um segredo novo e configure-o diretamente no Render.
 - `ZEUS_SIGNUP_ENABLED=true`: permite cadastro de novas contas; defina `false` para bloquear novos cadastros depois de preparar o acesso desejado.
 
@@ -88,7 +89,8 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `GET /api/me/automations`, `POST /api/me/automations`, `PATCH /api/me/automations/:id`, `DELETE /api/me/automations/:id` — automações internas seguras.
 - `GET /api/me/automation-runs`, `GET /api/me/notifications`, `PATCH /api/me/notifications/:id/read` — histórico e notificações.
 - `GET /api/me/action-requests`, `POST /api/me/action-requests/:id/confirm`, `POST /api/me/action-requests/:id/cancel` — ações pendentes, confirmação explícita e cancelamento.
-- `POST /api/ai/chat` — conversa com o modelo Ollama; mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
+- `POST /api/ai/chat` — conversa com o modelo Ollama, aceita `stream: true` para transmissão incremental por SSE, mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
+- `GET /api/status` testa o endpoint autenticado do Ollama e confirma se o modelo configurado está instalado; não trata mais a simples presença da URL como disponibilidade.
 - `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
 
 Exemplo de mensagem para o assistente:
