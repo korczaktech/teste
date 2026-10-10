@@ -90,6 +90,7 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_sessions").createIndex({ userId: 1 }),
       db.collection("zeus_tasks").createIndex({ userId: 1, createdAt: -1 }),
       db.collection("zeus_messages").createIndex({ userId: 1, conversationId: 1, createdAt: 1 }),
+      db.collection("zeus_preferences").createIndex({ userId: 1 }, { unique: true }),
       db.collection("zeus_audit").createIndex({ userId: 1, createdAt: -1 })
     ]).catch((error) => { indexesReady = null; throw error; });
   }
@@ -351,6 +352,49 @@ app.delete("/api/me/tasks/:id", requireAuth, asyncRoute(async (req, res) => {
   if (!result.deletedCount) return res.status(404).json({ error: "Tarefa não encontrada." });
   await audit(req.zeusDb, req.zeusUser._id, "task.deleted", { taskId: req.params.id });
   return res.json({ ok: true });
+}));
+app.get("/api/me/preferences", requireAuth, asyncRoute(async (req, res) => {
+  const stored = await req.zeusDb.collection("zeus_preferences").findOne({ userId: req.zeusUser._id });
+  return res.json({ preferences: {
+    ttsEnabled: stored?.ttsEnabled !== false,
+    sttEnabled: stored?.sttEnabled !== false,
+    speechRate: [0.85, 1, 1.1].includes(stored?.speechRate) ? stored.speechRate : 1,
+    confirmSensitiveActions: stored?.confirmSensitiveActions !== false,
+    updatedAt: stored?.updatedAt || null
+  } });
+}));
+app.patch("/api/me/preferences", requireAuth, asyncRoute(async (req, res) => {
+  const allowed = ["ttsEnabled", "sttEnabled", "confirmSensitiveActions"];
+  const update = {};
+  for (const key of allowed) if (typeof req.body?.[key] === "boolean") update[key] = req.body[key];
+  if (req.body?.speechRate !== undefined) {
+    const rate = Number(req.body.speechRate);
+    if (![0.85, 1, 1.1].includes(rate)) return res.status(400).json({ error: "Velocidade de fala inválida." });
+    update.speechRate = rate;
+  }
+  if (!Object.keys(update).length) return res.status(400).json({ error: "Nenhuma preferência válida informada." });
+  update.updatedAt = new Date();
+  await req.zeusDb.collection("zeus_preferences").updateOne(
+    { userId: req.zeusUser._id },
+    { $set: update, $setOnInsert: { userId: req.zeusUser._id, createdAt: new Date() } },
+    { upsert: true }
+  );
+  await audit(req.zeusDb, req.zeusUser._id, "preferences.updated", { keys: Object.keys(update).filter((key) => key !== "updatedAt") });
+  return res.json({ ok: true, preferences: update });
+}));
+app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
+  const catalog = [
+    { id: "google", name: "Google Workspace", configured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), capabilities: ["gmail", "drive", "docs", "sheets", "calendar", "contacts", "tasks"] },
+    { id: "microsoft", name: "Microsoft 365", configured: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
+    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "nexus", "nexa", "kos", "morok-ai"] },
+    { id: "other", name: "Outros serviços", configured: false, capabilities: ["official-api-connectors"] }
+  ];
+  const connections = await req.zeusDb.collection("zeus_connections").find({ userId: req.zeusUser._id }, { projection: { provider: 1, status: 1, connectedAt: 1 } }).toArray();
+  const byProvider = new Map(connections.map((entry) => [entry.provider, entry]));
+  return res.json({ connectors: catalog.map((connector) => {
+    const connection = byProvider.get(connector.id);
+    return { ...connector, status: connection?.status === "connected" ? "connected" : connector.configured ? "available" : "not_configured", connectedAt: connection?.connectedAt || null };
+  }) });
 }));
 app.get("/api/me/messages", requireAuth, asyncRoute(async (req, res) => {
   const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : "";
