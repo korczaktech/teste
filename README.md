@@ -87,6 +87,7 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `GET /api/me/activity` — consultar a auditoria autenticada.
 - `GET /api/me/automations`, `POST /api/me/automations`, `PATCH /api/me/automations/:id`, `DELETE /api/me/automations/:id` — automações internas seguras.
 - `GET /api/me/automation-runs`, `GET /api/me/notifications`, `PATCH /api/me/notifications/:id/read` — histórico e notificações.
+- `GET /api/me/action-requests`, `POST /api/me/action-requests/:id/confirm`, `POST /api/me/action-requests/:id/cancel` — ações pendentes, confirmação explícita e cancelamento.
 - `POST /api/ai/chat` — conversa com o modelo Ollama; mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
 - `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
 
@@ -129,16 +130,17 @@ A ordem é intencional. Cada fase deve ser implementada, testada e corrigida ant
 - HUB e KOS continuam pendentes de contratos de API estáveis e autenticação suportada.
 
 ### Fase 4 — Inteligência central e orquestração
-- Planejador de tarefas com etapas, ferramentas e dependências.
-- Recuperação de dados autorizados e síntese de resultados com referências às fontes.
-- Prévia da ação, confirmação de operações sensíveis e verificação pós-execução.
+- Planejador inicial de consultas somente leitura entre Google, Microsoft, Nexus, Nexa e Morok.
+- Encadeamento inicial de busca no Drive para leitura de documento/planilha quando houver correspondência.
+- Confirmação explícita para criar tarefas, salvar memórias e criar notificações no Morok.
+- Ações Google/Microsoft de escrita e planos com dependências complexas ainda precisam ser implementados e testados.
 - Respostas em texto e voz, sem alegar ações que não ocorreram.
 
 ### Fase 5 — Automações confiáveis
-- Agendamentos, fila de tarefas, tentativas com limites e tratamento de falhas.
-- Aprovação humana, notificações e histórico de execução.
-- Proteção contra duplicação, cancelamento e pausas globais.
-- Testes de execução e recuperação.
+- Agendamentos por data única ou intervalo, notificações internas e resumos do assistente.
+- Histórico de execução, estado ativo/pausado e notificações por conta.
+- O scheduler usa o processo da API; precisa de um worker sempre ativo para garantir execução 24/7, retries avançados e recuperação robusta.
+- Automações cross-service com ações de escrita ainda não estão concluídas.
 
 ### Fase 6 — Agente local para computador
 - Aplicativo/serviço desktop separado da versão web.
