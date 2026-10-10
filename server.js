@@ -84,6 +84,7 @@ async function ensureFoundationIndexes(db) {
       db.collection("zeus_sessions").createIndex({ expiresAt: 1 }, { expireAfterSeconds: 0 }),
       db.collection("zeus_sessions").createIndex({ userId: 1 }),
       db.collection("zeus_tasks").createIndex({ userId: 1, createdAt: -1 }),
+      db.collection("zeus_messages").createIndex({ userId: 1, conversationId: 1, createdAt: 1 }),
       db.collection("zeus_audit").createIndex({ userId: 1, createdAt: -1 })
     ]).catch((error) => { indexesReady = null; throw error; });
   }
@@ -345,6 +346,12 @@ app.delete("/api/me/tasks/:id", requireAuth, async (req, res) => {
   await audit(req.zeusDb, req.zeusUser._id, "task.deleted", { taskId: req.params.id });
   return res.json({ ok: true });
 });
+app.get("/api/me/messages", requireAuth, async (req, res) => {
+  const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : "";
+  if (!/^[a-z0-9-]{16,64}$/i.test(conversationId)) return res.status(400).json({ error: "Identificador de conversa inválido." });
+  const entries = await req.zeusDb.collection("zeus_messages").find({ userId: req.zeusUser._id, conversationId }).sort({ createdAt: 1 }).limit(100).toArray();
+  return res.json({ conversationId, messages: entries.map((entry) => ({ role: entry.role, content: entry.content, createdAt: entry.createdAt })) });
+});
 app.get("/api/me/activity", requireAuth, async (req, res) => {
   const entries = await req.zeusDb.collection("zeus_audit").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
   return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) });
@@ -357,25 +364,47 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
   const base = (process.env.OLLAMA_BASE_URL || "").replace(/\/$/, "");
   if (!base) return res.status(503).json({ error: "O serviço Ollama ainda não foi configurado." });
   const model = process.env.OLLAMA_MODEL || "llama3.2:1b";
+  const conversationId = typeof req.body?.conversationId === "string" && /^[a-z0-9-]{16,64}$/i.test(req.body.conversationId)
+    ? req.body.conversationId : crypto.randomUUID();
+  const systemMessage = {
+    role: "system",
+    content: "Você é Zeus, assistente central da Korczak Technologies. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem uma integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços."
+  };
   try {
+    const messages = [systemMessage];
+    if (req.zeusUser && req.zeusDb) {
+      const previous = await req.zeusDb.collection("zeus_messages")
+        .find({ userId: req.zeusUser._id, conversationId })
+        .sort({ createdAt: -1 }).limit(12).toArray();
+      previous.reverse().forEach((entry) => {
+        if ((entry.role === "user" || entry.role === "assistant") && typeof entry.content === "string") {
+          messages.push({ role: entry.role, content: entry.content.slice(0, 4000) });
+        }
+      });
+      await req.zeusDb.collection("zeus_messages").insertOne({
+        userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: new Date()
+      });
+    }
+    messages.push({ role: "user", content: message });
     const response = await fetch(base + "/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model,
-        messages: [{
-          role: "system",
-          content: "Você é Zeus, assistente central da Korczak Technologies. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem uma integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços."
-        }, { role: "user", content: message }],
-        stream: false
-      }),
+      body: JSON.stringify({ model, messages, stream: false }),
       signal: AbortSignal.timeout(90_000)
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) return res.status(502).json({ error: "Ollama não respondeu corretamente. Confira o modelo instalado e o serviço." });
-    return res.json({ response: data.message?.content || "", model });
-  } catch {
-    return res.status(502).json({ error: "Não foi possível acessar Ollama. Verifique se o serviço está ativo e acessível." });
+    const answer = typeof data.message?.content === "string" ? data.message.content : "";
+    if (req.zeusUser && req.zeusDb && answer) {
+      await req.zeusDb.collection("zeus_messages").insertOne({
+        userId: req.zeusUser._id, conversationId, role: "assistant", content: answer.slice(0, 12000), createdAt: new Date()
+      });
+      await audit(req.zeusDb, req.zeusUser._id, "assistant.response", { conversationId, model });
+    }
+    return res.json({ response: answer, model, conversationId });
+  } catch (error) {
+    console.error("Zeus AI request failed:", error.message);
+    return res.status(502).json({ error: "Não foi possível acessar Ollama ou salvar a conversa. Verifique os serviços e tente novamente." });
   }
 });
 
