@@ -50,4 +50,4 @@ echo
 echo "Preparação concluída."
 echo "Binário: $BUILD/bin/llama-server"
 echo "Modelo:  $MODEL"
-echo "Próximo passo: execute bash $HOME/zeus-inference-start.sh"
+echo "Próximo passo: cd ~/teste/mobile-inference/note20 && bash start.sh"
