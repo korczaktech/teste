@@ -80,6 +80,8 @@ Use um usuário de banco com permissões mínimas para a database `todas`. Restr
 - `POST /api/me/connectors/:provider/disconnect` — remover a conexão local e tentar revogar o token Google.
 - `GET /api/me/messages?conversationId=...` — histórico de conversa por conta.
 - `GET /api/me/activity` — consultar a auditoria autenticada.
+- `GET /api/me/automations`, `POST /api/me/automations`, `PATCH /api/me/automations/:id`, `DELETE /api/me/automations/:id` — automações internas seguras.
+- `GET /api/me/automation-runs`, `GET /api/me/notifications`, `PATCH /api/me/notifications/:id/read` — histórico e notificações.
 - `POST /api/ai/chat` — conversa com o modelo Ollama; mantém contexto recente para usuários autenticados e exige sessão depois que `ZEUS_AUTH_SECRET` estiver configurado.
 - `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
 
