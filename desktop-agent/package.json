@@ -1,0 +1,14 @@
+{
+  "name": "zeus-local-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local, permission-scoped bridge for the Zeus web assistant",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js",
+    "check": "node --check agent.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
