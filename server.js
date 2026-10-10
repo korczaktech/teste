@@ -132,6 +132,19 @@ function oauthConfigured(provider) {
   const config = oauthConfig(provider);
   return Boolean(config?.clientId && config?.clientSecret && config?.redirectUri && connectorEncryptionKey());
 }
+function productApiBase(provider) {
+  if (provider === "nexus") return (process.env.NEXUS_API_BASE_URL || "https://kzdoc.onrender.com/api/v1").replace(/\/$/, "");
+  if (provider === "nexa") return (process.env.NEXA_API_BASE_URL || "https://kz-nexa.onrender.com/v1").replace(/\/$/, "");
+  return "";
+}
+function jwtExpiry(token, fallbackMs) {
+  try {
+    const parts = String(token).split(".");
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+    if (Number.isFinite(payload.exp)) return new Date(payload.exp * 1000);
+  } catch { /* Fall back to a conservative local expiry. */ }
+  return new Date(Date.now() + fallbackMs);
+}
 async function getConnectorAccessToken(db, userId, provider) {
   const connection = await db.collection("zeus_connections").findOne({ userId, provider, status: "connected" });
   if (!connection) return { error: "not_connected" };
@@ -506,7 +519,22 @@ app.post("/api/connectors/:provider/start", requireAuth, asyncRoute(async (req, 
   url.searchParams.set("state", state);
   url.searchParams.set("code_challenge", challenge);
   url.searchParams.set("code_challenge_method", "S256");
-  if (provider === "google") {
+  if (provider === "nexus" || provider === "nexa") {
+    const base = productApiBase(provider);
+    if (resource === "profile") url = base + (provider === "nexus" ? "/users/me" : "/auth/me");
+    if (provider === "nexus" && resource === "documents") url = base + "/documents?page=1&page_size=50";
+    if (provider === "nexus" && resource === "folders") url = base + "/folders";
+    if (provider === "nexus" && resource === "document") {
+      if (!/^[A-Za-z0-9_-]{8,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de documento Nexus válido." });
+      url = base + "/documents/" + encodeURIComponent(id);
+    }
+    if (provider === "nexa" && resource === "workbooks") url = base + "/workbooks";
+    if (provider === "nexa" && resource === "templates") url = base + "/templates";
+    if (provider === "nexa" && resource === "workbook") {
+      if (!/^[A-Za-z0-9_-]{8,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de planilha Nexa válido." });
+      url = base + "/workbooks/" + encodeURIComponent(id);
+    }
+  } else if (provider === "google") {
     url.searchParams.set("access_type", "offline");
     url.searchParams.set("include_granted_scopes", "true");
     url.searchParams.set("prompt", "consent");
@@ -564,11 +592,44 @@ app.get("/api/connectors/:provider/callback", asyncRoute(async (req, res) => {
     return redirectError("callback_failed");
   }
 }));
+app.post("/api/connectors/korczak/:product/connect", requireAuth, asyncRoute(async (req, res) => {
+  const product = req.params.product;
+  if (!["nexus", "nexa"].includes(product)) return res.status(404).json({ error: "Produto Korczak não suportado por este conector." });
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password || password.length > 256) return res.status(400).json({ error: "Informe e-mail e senha válidos do produto escolhido." });
+  const base = productApiBase(product);
+  try {
+    const response = await fetch(base + (product === "nexus" ? "/auth/login" : "/auth/login"), {
+      method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ email, password }), signal: AbortSignal.timeout(20_000)
+    });
+    const data = await response.json().catch(() => ({}));
+    const token = typeof data.token === "string" ? data.token : "";
+    if (!response.ok || !token) return res.status(401).json({ error: "O produto recusou o acesso. Confira as credenciais e se a API está disponível." });
+    const fallbackMs = product === "nexa" ? 7 * 86400000 : 12 * 60 * 60 * 1000;
+    const expiresAt = data.expires_at ? new Date(data.expires_at) : jwtExpiry(token, fallbackMs);
+    const connection = {
+      userId: req.zeusUser._id, provider: product, status: "connected",
+      accessToken: encryptConnectorSecret(token), refreshToken: null,
+      accountEmail: typeof data.user?.email === "string" ? data.user.email : email,
+      accountName: typeof data.user?.name === "string" ? data.user.name : typeof data.user?.displayName === "string" ? data.user.displayName : "",
+      tokenExpiresAt: Number.isNaN(expiresAt.getTime()) ? new Date(Date.now() + fallbackMs) : expiresAt,
+      connectedAt: new Date(), updatedAt: new Date()
+    };
+    await req.zeusDb.collection("zeus_connections").updateOne({ userId: req.zeusUser._id, provider: product }, { $set: connection }, { upsert: true });
+    await audit(req.zeusDb, req.zeusUser._id, "connector.connected", { provider: product, accountEmail: connection.accountEmail });
+    return res.json({ ok: true, provider: product, accountEmail: connection.accountEmail, expiresAt: connection.tokenExpiresAt.toISOString() });
+  } catch (error) {
+    console.error("Korczak connector login failed for", product, error.message);
+    return res.status(502).json({ error: "Não foi possível acessar a API do produto Korczak. Tente novamente mais tarde." });
+  }
+}));
 app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRoute(async (req, res) => {
   const provider = req.params.provider;
   const resource = req.params.resource;
-  if (!["google", "microsoft"].includes(provider)) return res.status(404).json({ error: "Provedor não suportado." });
-  const allowed = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams"];
+  if (!["google", "microsoft", "nexus", "nexa"].includes(provider)) return res.status(404).json({ error: "Provedor não suportado." });
+  const allowed = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams", "documents", "folders", "workbooks", "workbook", "templates"];
   if (!allowed.includes(resource)) return res.status(404).json({ error: "Recurso não permitido pelo catálogo Zeus." });
   const tokenResult = await getConnectorAccessToken(req.zeusDb, req.zeusUser._id, provider);
   if (tokenResult.error) {
@@ -658,7 +719,7 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
 }));
 app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(async (req, res) => {
   const provider = req.params.provider;
-  if (!["google", "microsoft", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
+  if (!["google", "microsoft", "nexus", "nexa", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
   const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider });
   if (connection && provider === "google" && connection.refreshToken) {
     try {
@@ -674,7 +735,9 @@ app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
   const catalog = [
     { id: "google", name: "Google Workspace", configured: oauthConfigured("google"), capabilities: ["gmail", "drive", "docs", "sheets", "calendar", "contacts", "tasks"] },
     { id: "microsoft", name: "Microsoft 365", configured: oauthConfigured("microsoft"), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
-    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "nexus", "nexa", "kos", "morok-ai"] },
+    { id: "nexus", name: "Korczak Nexus", configured: true, capabilities: ["documents", "folders", "versions"] },
+    { id: "nexa", name: "Korczak Nexa", configured: true, capabilities: ["workbooks", "sheets", "templates"] },
+    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "kos", "morok-ai"] },
     { id: "other", name: "Outros serviços", configured: false, capabilities: ["official-api-connectors"] }
   ];
   const connections = await req.zeusDb.collection("zeus_connections").find({ userId: req.zeusUser._id }, { projection: { provider: 1, status: 1, connectedAt: 1 } }).toArray();
