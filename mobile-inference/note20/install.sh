@@ -11,7 +11,7 @@ MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/q
 echo "== Zeus / Note20 — preparação do servidor local =="
 echo "Este script compila llama.cpp no próprio celular; mantenha-o carregando e com espaço livre."
 pkg update -y
-pkg install -y git cmake ninja clang make pkg-config curl
+pkg install -y git cmake ninja clang make pkg-config curl libomp
 
 mkdir -p "$ROOT" "$MODEL_DIR" "$ROOT/logs"
 
