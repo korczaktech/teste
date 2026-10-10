@@ -1,57 +1,107 @@
-# Zeus — Inteligência para Redes Sociais
+# Zeus — Central de Inteligência Korczak
 
-O Zeus é a central da Korczak Technologies para organizar contas sociais, planejar conteúdo, analisar métricas autorizadas e oferecer assistência por IA com supervisão humana.
+O Zeus está evoluindo de um painel de redes sociais para uma central de inteligência e automação do ecossistema digital: Google, Microsoft, produtos Korczak Technologies e outros serviços com APIs oficiais. A interface usa uma identidade própria, com estética tecnológica inspirada em uma central de comando e referências visuais à mitologia de Zeus.
 
-## Infraestrutura (plano gratuito)
+## Estado atual
 
-- **Frontend:** GitHub Pages, publicado automaticamente a partir de `frontend/`.
-- **API:** Render Web Service gratuito: `https://zeus-api-cm2d.onrender.com` (health check em `/health`).
-- **Banco:** MongoDB Atlas Free, projeto `Korczak Technologies`, cluster `KorczakCluster`, database `todas`.
-- **IA:** serviço Ollama existente no Render (`morok-ollama.onrender.com`), acessado pelo backend para não expor endpoint/modelo ao navegador.
-- **Domínio pretendido:** `https://zeus.morok.korczaktech.com.br`.
+- **Interface:** painel de comando, navegação por áreas, catálogo de integrações, tarefas locais de sessão, configurações e histórico temporário.
+- **Assistente:** API encaminha mensagens ao Ollama no backend.
+- **Voz:** ditado pelo reconhecimento de fala do navegador; endpoint neural de texto para fala implementado no backend, usando uma única voz fixa `pt-BR-AntonioNeural`.
+- **Publicação web:** GitHub Pages via GitHub Actions.
+- **API:** Render Web Service `https://zeus-api-cm2d.onrender.com` (health check em `/health`).
+- **Banco:** MongoDB Atlas, database `todas`.
+- **Domínio:** `https://zeus.morok.korczaktech.com.br`.
 
-> O plano gratuito é adequado para protótipo e testes. Serviços gratuitos podem dormir, ter limites de recursos e apresentar latência. Ollama pode não caber nos recursos de memória/CPU do plano gratuito; o modelo precisa estar disponível no serviço configurado.
+**Importante:** a interface e as rotas iniciais não significam que contas Google, Microsoft ou Korczak já estejam conectadas. Conectores externos só devem ser exibidos como ativos depois de autenticação, teste e autorização reais. Tarefas e histórico na interface ainda são temporários até a fundação de persistência e autenticação estar concluída.
 
-## Configuração do Render
+## Configuração da API no Render
 
-Configure estas variáveis **no serviço da API**, nunca no frontend ou no Git:
+Configure as variáveis diretamente no serviço do Render. Nunca coloque chaves ou credenciais no frontend, no README ou no Git.
 
-- `MONGODB_URI`: URI SRV do cluster Atlas com usuário de banco e senha próprios; selecione a database `todas`.
+Obrigatórias para os serviços existentes:
+- `MONGODB_URI`: URI SRV do cluster Atlas.
 - `MONGODB_DATABASE=todas`
 - `OLLAMA_BASE_URL=https://morok-ollama.onrender.com`
-- `OLLAMA_MODEL=llama3.2:1b` (ajuste para um modelo realmente instalado no Ollama).
+- `OLLAMA_MODEL=llama3.2:1b` (ou o nome exato de um modelo instalado no serviço Ollama).
 
-Crie no Atlas um usuário de banco com permissões mínimas para a database `todas`, e permita o acesso de rede do Render conforme a política de segurança do projeto. Não comite credenciais. Evite liberar acesso irrestrito ao Atlas sem avaliar o risco.
+### Ativar voz neural do Zeus
 
-## Domínio personalizado
+A API já inclui `POST /api/voice/tts`, com limite de texto, proteção básica contra excesso de solicitações e credenciais mantidas no backend. Para ativar a voz neural, crie um recurso **Azure Speech** e configure no Render:
 
-O arquivo `frontend/CNAME` registra o domínio esperado para o build do Pages. Ainda é necessário:
-1. Ativar GitHub Pages usando **GitHub Actions** como fonte de publicação.
-2. Configurar no provedor DNS um registro **CNAME** para `zeus.morok` apontando a `korczaktech.github.io`.
-3. Confirmar o domínio em Settings → Pages e aguardar a emissão do HTTPS.
-4. Definir `MONGODB_URI` e as variáveis do Ollama no Render e verificar `/api/status`.
+- `SPEECH_KEY`: chave do recurso Azure Speech.
+- `SPEECH_REGION`: região do recurso, por exemplo a região indicada no portal Azure.
 
-## API
+A voz é fixa: `pt-BR-AntonioNeural`, masculina em português brasileiro. O SSML ajusta levemente a velocidade e o tom para uma entrega mais serena e firme. A lista de vozes e o endpoint seguem a documentação oficial da [API REST de texto para fala do Azure Speech](https://learn.microsoft.com/pt-br/azure/ai-services/speech-service/rest-text-to-speech) e da [lista de idiomas e vozes](https://learn.microsoft.com/pt-br/azure/ai-services/speech-service/language-support?tabs=pronunciation-assessment).
 
-- `GET /health` — health check para o Render.
-- `GET /api/status` — estado da API, MongoDB e configuração Ollama.
-- `POST /api/ai/chat` — encaminha uma mensagem ao Ollama configurado.
+Sem as variáveis de Azure, a interface recorre à voz local do navegador. A voz neural depende de uma chave de serviço válida, conectividade e cobrança/limites do Azure. Nunca exponha `SPEECH_KEY` no frontend.
 
-Exemplo de corpo para `POST /api/ai/chat`:
+### Rede e segurança do Atlas
+
+Use um usuário de banco com permissões mínimas para a database `todas`. Restrinja a lista de acesso de rede conforme a infraestrutura e a política de segurança. Evite liberar acesso irrestrito ao Atlas sem avaliar o risco.
+
+## Rotas atuais da API
+
+- `GET /` — identidade e versão da API.
+- `GET /health` — health check.
+- `GET /api/status` — estado de API, MongoDB, Ollama e configuração de voz neural.
+- `POST /api/ai/chat` — conversa com o modelo Ollama configurado.
+- `POST /api/voice/tts` — retorna áudio MP3 gerado pela voz neural fixa quando o serviço está configurado.
+
+Exemplo de mensagem para o assistente:
 
 ```json
-{ "message": "Sugira um calendário editorial de 7 dias para uma marca de tecnologia." }
+{ "message": "Organize minhas prioridades para hoje." }
 ```
 
-## Fases do projeto
+Exemplo de solicitação de voz:
 
-### Fase 1 — Fundação e painel
-Base de interface, API, persistência e conexões autorizadas. A autenticação, conexões reais com redes sociais, testes abrangentes e auditoria ainda precisam ser implementados antes de declarar a fase concluída.
+```json
+{ "text": "Zeus em prontidão. Como posso ajudar?" }
+```
 
-### Fase 2 — Inteligência, conteúdo e análise
-Calendário editorial, rascunhos assistidos, caixa de entrada e métricas conforme as APIs oficiais disponíveis.
+## Plano de conclusão — seis fases
 
-### Fase 3 — Automação supervisionada
-Agendamento permitido por API oficial, fila de tarefas, aprovações, permissões e auditoria.
+A ordem é intencional. Cada fase deve ser implementada, testada e corrigida antes de ser considerada concluída. As integrações dependem de credenciais, permissões e APIs oficiais válidas; a ausência dessas credenciais não deve ser disfarçada como sucesso.
 
-Todas as integrações devem respeitar políticas, limites e permissões das plataformas. Sem engajamento falso, spam ou contas falsas.
+### Fase 1 — Fundação, identidade e segurança
+- Autenticação e sessões seguras.
+- Perfis, permissões granulares e consentimento.
+- Persistência no MongoDB para preferências, tarefas, memória e histórico.
+- Auditoria de ações e erros.
+- Registro comum de conectores, estado de conexão e revogação.
+- Testes automatizados e validação de segurança.
+
+### Fase 2 — Google e Microsoft
+- OAuth oficial, estado/PKCE quando aplicável, callback e revogação.
+- Google Workspace APIs e Microsoft Graph conforme escopos concedidos.
+- Acesso mínimo necessário a e-mail, arquivos, documentos, planilhas, calendário, contatos e tarefas.
+- Armazenamento criptografado de tokens e testes de reconexão/expiração.
+
+### Fase 3 — Ecossistema Korczak Technologies
+- Contratos de API e autenticação entre Zeus, Korczak HUB, Nexus, Nexa, KOS e Morok AI.
+- Catálogo de recursos realmente disponíveis em cada serviço.
+- Identidade compartilhada apenas onde houver suporte real.
+- Permissões por produto, testes de integração e revogação.
+
+### Fase 4 — Inteligência central e orquestração
+- Planejador de tarefas com etapas, ferramentas e dependências.
+- Recuperação de dados autorizados e síntese de resultados com referências às fontes.
+- Prévia da ação, confirmação de operações sensíveis e verificação pós-execução.
+- Respostas em texto e voz, sem alegar ações que não ocorreram.
+
+### Fase 5 — Automações confiáveis
+- Agendamentos, fila de tarefas, tentativas com limites e tratamento de falhas.
+- Aprovação humana, notificações e histórico de execução.
+- Proteção contra duplicação, cancelamento e pausas globais.
+- Testes de execução e recuperação.
+
+### Fase 6 — Agente local para computador
+- Aplicativo/serviço desktop separado da versão web.
+- Pareamento seguro e permissões explícitas por capacidade.
+- Acesso local a arquivos, pastas e aplicativos apenas conforme autorizado.
+- Lista de ações permitidas, confirmação para operações destrutivas e auditoria local.
+- Testes em cada sistema operacional suportado; o navegador, sozinho, não pode obter acesso irrestrito ao computador.
+
+## Critério de conclusão
+
+Uma fase só será marcada como concluída depois de revisar o código, executar os testes disponíveis, validar os fluxos de erro e registrar dependências externas restantes. Credenciais privadas não devem ser pedidas no chat nem comitadas no repositório: devem ser configuradas diretamente no painel seguro do provedor.
