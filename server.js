@@ -568,8 +568,8 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
   const provider = req.params.provider;
   const resource = req.params.resource;
   if (!["google", "microsoft"].includes(provider)) return res.status(404).json({ error: "Provedor não suportado." });
-  const allowedResources = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams"];
-  if (!allowedResources.includes(resource)) return res.status(404).json({ error: "Recurso não permitido pelo catálogo Zeus." });
+  const allowed = ["profile", "drive-search", "mail-search", "mail-message", "calendar-events", "contacts", "tasks-list", "tasks", "document", "spreadsheet", "spreadsheet-values", "teams"];
+  if (!allowed.includes(resource)) return res.status(404).json({ error: "Recurso não permitido pelo catálogo Zeus." });
   const tokenResult = await getConnectorAccessToken(req.zeusDb, req.zeusUser._id, provider);
   if (tokenResult.error) {
     const status = tokenResult.error === "not_connected" ? 409 : tokenResult.error === "reauthorization_required" ? 401 : 503;
@@ -585,8 +585,7 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
     if (resource === "drive-search") {
       if (!query) return res.status(400).json({ error: "Informe q para pesquisar no Drive." });
       const safeQuery = query.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
-      const driveQuery = "name contains '" + safeQuery + "' and trashed = false";
-      url = "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent(driveQuery) + "&pageSize=25&orderBy=modifiedTime desc&fields=files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress))";
+      url = "https://www.googleapis.com/drive/v3/files?q=" + encodeURIComponent("name contains '" + safeQuery + "' and trashed = false") + "&pageSize=25&orderBy=modifiedTime desc&fields=files(id,name,mimeType,modifiedTime,webViewLink,owners(displayName,emailAddress))";
     }
     if (resource === "mail-search") {
       if (!query) return res.status(400).json({ error: "Informe q para pesquisar e-mails." });
@@ -598,9 +597,9 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
     }
     if (resource === "calendar-events") {
       const now = new Date();
-      const timeMin = typeof req.query.timeMin === "string" && !Number.isNaN(Date.parse(req.query.timeMin)) ? new Date(req.query.timeMin) : now;
-      const timeMax = typeof req.query.timeMax === "string" && !Number.isNaN(Date.parse(req.query.timeMax)) ? new Date(req.query.timeMax) : new Date(now.getTime() + 7 * 86400000);
-      url = "https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=50&timeMin=" + encodeURIComponent(timeMin.toISOString()) + "&timeMax=" + encodeURIComponent(timeMax.toISOString());
+      const start = typeof req.query.timeMin === "string" && !Number.isNaN(Date.parse(req.query.timeMin)) ? new Date(req.query.timeMin) : now;
+      const end = typeof req.query.timeMax === "string" && !Number.isNaN(Date.parse(req.query.timeMax)) ? new Date(req.query.timeMax) : new Date(now.getTime() + 7 * 86400000);
+      url = "https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=50&timeMin=" + encodeURIComponent(start.toISOString()) + "&timeMax=" + encodeURIComponent(end.toISOString());
     }
     if (resource === "contacts") url = "https://people.googleapis.com/v1/people/me/connections?pageSize=100&personFields=names,emailAddresses,phoneNumbers";
     if (resource === "tasks-list") url = "https://tasks.googleapis.com/tasks/v1/users/@me/lists?maxResults=100";
@@ -619,143 +618,7 @@ app.get("/api/me/connectors/:provider/resources/:resource", requireAuth, asyncRo
     if (resource === "spreadsheet-values") {
       if (!/^[A-Za-z0-9_-]{10,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de planilha válido." });
       const range = typeof req.query.range === "string" ? req.query.range.slice(0, 120) : "A1:Z100";
-      if (!/^[A-Za-z0-9_!:$ .-]+$/.test(range)) return res.status(400).json({ error: "Intervalo de planilha inválido." });
-      url = "https://sheets.googleapis.com/v4/spreadsheets/" + encodeURIComponent(id) + "/values/" + encodeURIComponent(range);
-    }
-  } else {
-    if (resource === "profile") url = "https://graph.microsoft.com/v1.0/me";
-    if (resource === "drive-search") {
-      if (!query) return res.status(400).json({ error: "Informe q para pesquisar no OneDrive." });
-      const safeQuery = query.replace(/'/g, "''");
-      url = "https://graph.microsoft.com/v1.0/me/drive/root/search(q='" + encodeURIComponent(safeQuery) + "')?$top=25&$select=id,name,file,folder,webUrl,lastModifiedDateTime,size";
-    }
-    if (resource === "mail-search") {
-      if (!query) return res.status(400).json({ error: "Informe q para pesquisar e-mails." });
-      url = "https://graph.microsoft.com/v1.0/me/messages?$top=25&$select=id,subject,from,receivedDateTime,isRead,webLink&$search=" + encodeURIComponent('"subject:' + query + '"');
-      extraHeaders = { ConsistencyLevel: "eventual" };
-    }
-    if (resource === "mail-message") {
-      if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) return res.status(400).json({ error: "Informe um ID de mensagem válido." });
-      url = "https://graph.microsoft.com/v1.0/me/messages/" + encodeURIComponent(id);
-    }
-    if (resource === "calendar-events") url = "https://graph.microsoft.com/v1.0/me/events?$top=50&$select=id,subject,start,end,organizer,webLink&$orderby=start/dateTime";
-    if (resource === "contacts") url = "https://graph.microsoft.com/v1.0/me/contacts?$top=100&$select=id,displayName,emailAddresses,businessPhones";
-    if (resource === "tasks-list") url = "https://graph.microsoft.com/v1.0/me/todo/lists";
-    if (resource === "tasks") {
-      if (!/^[A-Za-z0-9_-]{1,200}$/.test(id)) return res.status(400).json({ error: "Informe listId como id." });
-      url = "https://graph.microsoft.com/v1.0/me/todo/lists/" + encodeURIComponent(id) + "/tasks";
-    }
-    if (resource === "teams") url = "https://graph.microsoft.com/v1.0/me/joinedTeams";
-  }
-  if (!url) return res.status(400).json({ error: "Parâmetros insuficientes para este recurso." });
-  const result = await providerJson(url, tokenResult.accessToken, extraHeaders);
-  if (!result.ok) {
-    if (result.status === 401) return res.status(401).json({ error: "O provedor recusou a autorização. Reconecte a conta." });
-    console.error("Connector API error", provider, resource, result.status);
-    return res.status(502).json({ error: "O provedor não conseguiu concluir a consulta. Verifique as permissões concedidas." });
-  }
-  await audit(req.zeusDb, req.zeusUser._id, "connector.resource.read", { provider, resource });
-  return res.json({ provider, resource, data: result.data });
-}));
-app.post("/api/me/connectors/:provider/disconnect", requireAuth, asyncRoute(async (req, res) => {
-  const provider = req.params.provider;
-  if (!["google", "microsoft", "korczak", "other"].includes(provider)) return res.status(404).json({ error: "Conector não reconhecido." });
-  const connection = await req.zeusDb.collection("zeus_connections").findOne({ userId: req.zeusUser._id, provider });
-  if (connection && provider === "google" && connection.refreshToken) {
-    try {
-      const token = decryptConnectorSecret(connection.refreshToken);
-      if (token) await fetch("https://oauth2.googleapis.com/revoke", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token }).toString(), signal: AbortSignal.timeout(8000) });
-    } catch { /* Local token deletion still proceeds; user can revoke access in provider settings. */ }
-  }
-  await req.zeusDb.collection("zeus_connections").deleteOne({ userId: req.zeusUser._id, provider });
-  await audit(req.zeusDb, req.zeusUser._id, "connector.disconnected", { provider });
-  return res.json({ ok: true, note: provider === "microsoft" ? "A conexão local foi removida. Para revogar o consentimento Microsoft, remova o acesso nas configurações da sua conta Microsoft." : "Conexão removida." });
-}));
-app.get("/api/me/connectors", requireAuth, asyncRoute(async (req, res) => {
-  const catalog = [
-    { id: "google", name: "Google Workspace", configured: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET), capabilities: ["gmail", "drive", "docs", "sheets", "calendar", "contacts", "tasks"] },
-    { id: "microsoft", name: "Microsoft 365", configured: Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET), capabilities: ["outlook", "onedrive", "word", "excel", "calendar", "contacts", "tasks", "teams"] },
-    { id: "korczak", name: "Korczak Technologies", configured: false, capabilities: ["hub", "nexus", "nexa", "kos", "morok-ai"] },
-    { id: "other", name: "Outros serviços", configured: false, capabilities: ["official-api-connectors"] }
-  ];
-  const connections = await req.zeusDb.collection("zeus_connections").find({ userId: req.zeusUser._id }, { projection: { provider: 1, status: 1, connectedAt: 1 } }).toArray();
-  const byProvider = new Map(connections.map((entry) => [entry.provider, entry]));
-  return res.json({ connectors: catalog.map((connector) => {
-    const connection = byProvider.get(connector.id);
-    return { ...connector, status: connection?.status === "connected" ? "connected" : connector.configured ? "available" : "not_configured", connectedAt: connection?.connectedAt || null };
-  }) });
-}));
-app.get("/api/me/messages", requireAuth, asyncRoute(async (req, res) => {
-  const conversationId = typeof req.query.conversationId === "string" ? req.query.conversationId : "";
-  if (!/^[a-z0-9-]{16,64}$/i.test(conversationId)) return res.status(400).json({ error: "Identificador de conversa inválido." });
-  const entries = await req.zeusDb.collection("zeus_messages").find({ userId: req.zeusUser._id, conversationId }).sort({ createdAt: 1 }).limit(100).toArray();
-  return res.json({ conversationId, messages: entries.map((entry) => ({ role: entry.role, content: entry.content, createdAt: entry.createdAt })) });
-}));
-app.get("/api/me/activity", requireAuth, asyncRoute(async (req, res) => {
-  const entries = await req.zeusDb.collection("zeus_audit").find({ userId: req.zeusUser._id }).sort({ createdAt: -1 }).limit(100).toArray();
-  return res.json({ entries: entries.map((entry) => ({ id: String(entry._id), action: entry.action, detail: entry.detail, createdAt: entry.createdAt })) });
-}));
-
-app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
-  if (!allowAiRequest(req)) return res.status(429).json({ error: "Muitas mensagens em pouco tempo. Aguarde um minuto." });
-  const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
-  if (!message || message.length > 4000) return res.status(400).json({ error: "Envie uma mensagem de até 4.000 caracteres." });
-  const base = (process.env.OLLAMA_BASE_URL || "").replace(/\/$/, "");
-  if (!base) return res.status(503).json({ error: "O serviço Ollama ainda não foi configurado." });
-  const model = process.env.OLLAMA_MODEL || "llama3.2:1b";
-  const conversationId = typeof req.body?.conversationId === "string" && /^[a-z0-9-]{16,64}$/i.test(req.body.conversationId)
-    ? req.body.conversationId : crypto.randomUUID();
-  const systemMessage = {
-    role: "system",
-    content: "Você é Zeus, assistente central da Korczak Technologies. Responda em português brasileiro com clareza, autoridade serena, concisão e foco em resolver a solicitação. Ajude a planejar, pesquisar, resumir e coordenar tarefas entre serviços, mas nunca afirme que acessou uma conta, arquivo ou serviço externo sem uma integração real e autorização válida. Nunca invente execução, dados ou resultados. Antes de uma ação externa sensível, explique a ação e solicite confirmação. Respeite privacidade, permissões e políticas dos serviços."
-  };
-  try {
-    const messages = [systemMessage];
-    if (req.zeusUser && req.zeusDb) {
-      const previous = await req.zeusDb.collection("zeus_messages")
-        .find({ userId: req.zeusUser._id, conversationId })
-        .sort({ createdAt: -1 }).limit(12).toArray();
-      previous.reverse().forEach((entry) => {
-        if ((entry.role === "user" || entry.role === "assistant") && typeof entry.content === "string") {
-          messages.push({ role: entry.role, content: entry.content.slice(0, 4000) });
-        }
-      });
-      await req.zeusDb.collection("zeus_messages").insertOne({
-        userId: req.zeusUser._id, conversationId, role: "user", content: message, createdAt: new Date()
-      });
-    }
-    messages.push({ role: "user", content: message });
-    const response = await fetch(base + "/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: false }),
-      signal: AbortSignal.timeout(90_000)
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) return res.status(502).json({ error: "Ollama não respondeu corretamente. Confira o modelo instalado e o serviço." });
-    const answer = typeof data.message?.content === "string" ? data.message.content : "";
-    if (req.zeusUser && req.zeusDb && answer) {
-      await req.zeusDb.collection("zeus_messages").insertOne({
-        userId: req.zeusUser._id, conversationId, role: "assistant", content: answer.slice(0, 12000), createdAt: new Date()
-      });
-      await audit(req.zeusDb, req.zeusUser._id, "assistant.response", { conversationId, model });
-    }
-    return res.json({ response: answer, model, conversationId });
-  } catch (error) {
-    console.error("Zeus AI request failed:", error.message);
-    return res.status(502).json({ error: "Não foi possível acessar Ollama ou salvar a conversa. Verifique os serviços e tente novamente." });
-  }
-});
-
-app.use((error, _req, res, next) => {
-  console.error("Zeus API request failed:", error.message);
-  if (res.headersSent) return next(error);
-  return res.status(500).json({ error: "Ocorreu um erro interno. Tente novamente." });
-});
-
-const port = Number(process.env.PORT || 10000);
-app.listen(port, "0.0.0.0", () => console.log("ZeusAPI listening on " + port));
- .-]+$/.test(range)) return res.status(400).json({ error: "Intervalo de planilha inválido." });
+      if (range.length > 120 || /[\r\n]/.test(range)) return res.status(400).json({ error: "Intervalo de planilha inválido." });
       url = "https://sheets.googleapis.com/v4/spreadsheets/" + encodeURIComponent(id) + "/values/" + encodeURIComponent(range);
     }
   } else {
