@@ -319,7 +319,7 @@ app.get("/api/status", async (_req, res) => {
   if (process.env.OLLAMA_BASE_URL) {
     try {
       const base = process.env.OLLAMA_BASE_URL.replace(/\/$/, "");
-      const response = await fetch(base + "/api/tags", { signal: AbortSignal.timeout(8000), headers: process.env.OLLAMA_API_KEY ? { Authorization: "Bearer " + process.env.OLLAMA_API_KEY } : {} });
+      const response = await fetch(base + "/api/tags", { signal: AbortSignal.timeout(8000), headers: process.env.OLLAMA_API_KEY ? { Authorization: "Basic " + Buffer.from((process.env.OLLAMA_API_USERNAME || "morok") + ":" + process.env.OLLAMA_API_KEY).toString("base64") } : {} });
       if (!response.ok) ollama = "unavailable";
       else {
         const payload = await response.json();
@@ -1102,7 +1102,7 @@ app.post("/api/ai/chat", requireAuthWhenConfigured, async (req, res) => {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(process.env.OLLAMA_API_KEY ? { Authorization: "Bearer " + process.env.OLLAMA_API_KEY } : {})
+        ...(process.env.OLLAMA_API_KEY ? { Authorization: "Basic " + Buffer.from((process.env.OLLAMA_API_USERNAME || "morok") + ":" + process.env.OLLAMA_API_KEY).toString("base64") } : {})
       },
       body: JSON.stringify({ model, messages, stream: false }),
       signal: AbortSignal.timeout(90_000)
