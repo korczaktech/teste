@@ -45,7 +45,7 @@ A API já contém o fluxo de autorização OAuth com `state`, PKCE e armazenamen
 - `ZEUS_CONNECTOR_ENCRYPTION_KEY`: chave aleatória de 32 bytes, representada por 64 caracteres hexadecimais. Ela já foi configurada no serviço Render; mantenha-a privada e não a regenere após armazenar conexões, ou os tokens antigos não poderão ser descriptografados.
 - Registre os URIs de callback exatamente como acima nos consoles de cada provedor.
 - Revise a tela de consentimento, usuários de teste e exigências de verificação de cada plataforma. Algumas permissões podem exigir aprovação do administrador ou verificação do aplicativo.
-- Os escopos solicitados são iniciais. O fluxo OAuth está implementado, mas cada operação de produto (ler e-mail, editar arquivos, calendário etc.) ainda precisa de adaptadores de API, tratamento de renovação de token e testes de ponta a ponta antes de ser considerada concluída.
+- Os escopos iniciais são de leitura, com acesso mínimo compatível com as consultas implementadas. O fluxo OAuth, renovação de tokens e adaptadores de leitura estão no código; ainda dependem de credenciais reais e testes de ponta a ponta. Operações de escrita (enviar e-mail, alterar arquivos, criar eventos etc.) exigirão escopos adicionais e confirmação explícita antes da execução.
 
 ### Ativar voz neural do Zeus
 
@@ -107,7 +107,8 @@ A ordem é intencional. Cada fase deve ser implementada, testada e corrigida ant
 
 ### Fase 2 — Google e Microsoft
 - OAuth oficial, estado/PKCE quando aplicável, callback e revogação.
-- Google Workspace APIs e Microsoft Graph conforme escopos concedidos.
+- Google Workspace APIs e Microsoft Graph em leitura inicial, conforme escopos concedidos.
+- Escopos de escrita incrementais somente quando as ações correspondentes forem implementadas e protegidas por confirmação.
 - Acesso mínimo necessário a e-mail, arquivos, documentos, planilhas, calendário, contatos e tarefas.
 - Armazenamento criptografado de tokens e testes de reconexão/expiração.
 
